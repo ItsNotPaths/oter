@@ -1,0 +1,102 @@
+package oter
+
+import "core:fmt"
+import "core:os"
+import sdl "vendor:sdl3"
+import "oket:gfx"
+import "../pane"
+
+TITLE :: "oter"
+APP_ID :: "oter"
+
+App :: struct {
+    window:  ^sdl.Window,
+    painter: gfx.Painter,
+    grid:    gfx.Grid,
+    theme:   gfx.Theme,
+    panes:   [dynamic]pane.Pane,
+    active:  int,
+    running: bool,
+}
+
+gl_loader :: proc(p: rawptr, name: cstring) {
+    (^sdl.FunctionPointer)(p)^ = sdl.GL_GetProcAddress(name)
+}
+
+main :: proc() {
+    sdl.SetHint(sdl.HINT_APP_ID, APP_ID)
+    if !sdl.Init({.VIDEO}) {
+        fmt.eprintfln("SDL_Init failed: %s", sdl.GetError())
+        os.exit(1)
+    }
+    defer sdl.Quit()
+
+    sdl.GL_SetAttribute(.CONTEXT_MAJOR_VERSION, gfx.GL_MAJOR)
+    sdl.GL_SetAttribute(.CONTEXT_MINOR_VERSION, gfx.GL_MINOR)
+    sdl.GL_SetAttribute(.CONTEXT_PROFILE_MASK, i32(transmute(u32)sdl.GL_CONTEXT_PROFILE_CORE))
+
+    window := sdl.CreateWindow(TITLE, 1200, 700, {.OPENGL, .RESIZABLE, .HIGH_PIXEL_DENSITY})
+    if window == nil {
+        fmt.eprintfln("SDL_CreateWindow failed: %s", sdl.GetError())
+        os.exit(1)
+    }
+    defer sdl.DestroyWindow(window)
+
+    glctx := sdl.GL_CreateContext(window)
+    if glctx == nil {
+        fmt.eprintfln("SDL_GL_CreateContext failed: %s", sdl.GetError())
+        os.exit(1)
+    }
+    defer sdl.GL_DestroyContext(glctx)
+    sdl.GL_SetSwapInterval(1)
+    gfx.gl_init(gl_loader)
+
+    sx := sdl.GetWindowDisplayScale(window)
+    if sx <= 0 {
+        sx = 1
+    }
+    faces, _ := gfx.face_stack_load(sx)
+    atlas, atlas_ok := gfx.atlas_make(faces)
+    if !atlas_ok {
+        fmt.eprintln("the built-in fallback atlas failed to parse")
+        os.exit(1)
+    }
+
+    a := App{window = window, theme = gfx.DEFAULT_THEME, running = true}
+    if !gfx.painter_init(&a.painter, atlas) {
+        os.exit(1)
+    }
+    defer gfx.painter_destroy(&a.painter)
+    gfx.painter_set_scale(&a.painter, len(faces) > 0 ? 1 : sx)
+    defer gfx.grid_destroy(&a.grid)
+
+    start := os.get_working_directory(context.allocator) or_else "/"
+    defer delete(start)
+    for _ in 0 ..< 2 {
+        p: pane.Pane
+        pane.open(&p, start)
+        append(&a.panes, p)
+    }
+    defer {
+        for &p in a.panes {
+            pane.destroy(&p)
+        }
+        delete(a.panes)
+    }
+
+    // Redraw only when something happened.
+    for a.running {
+        draw(&a)
+        sdl.GL_SwapWindow(a.window)
+        free_all(context.temp_allocator)
+
+        ev: sdl.Event
+        if !sdl.WaitEvent(&ev) {
+            continue
+        }
+        handle(&a, ev)
+        for sdl.PollEvent(&ev) {
+            handle(&a, ev)
+        }
+    }
+}
