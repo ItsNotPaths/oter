@@ -24,13 +24,14 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     switch {
     case ctrl && k == sdl.K_Q:
         a.running = false
-    case alt && k == sdl.K_C: // prototype: open or close the drawer; only a TUI makes it full
-        a.drawer = a.drawer == .Closed ? .Open : .Closed
-    case k == sdl.K_ESCAPE && a.drawer == .Open: // full belongs to the TUI, which wants Esc
+    case alt && k == sdl.K_UP && a.drawer == .Closed: // only a TUI makes it full
+        a.drawer = .Open
+    case (alt && k == sdl.K_DOWN || k == sdl.K_ESCAPE) && a.drawer == .Open: // full belongs to the TUI
         a.drawer = .Closed
     case k == sdl.K_TAB:
         a.in_sidebar = !a.in_sidebar
-    // (hole sidebar-keys :tags (ui input) :sev gap :needs places) keys still drive the pane while the sidebar has focus.
+    // (hole sidebar-keys :tags (ui input) :sev gap :needs places) the sidebar swallows keys; no cursor, no enter.
+    case a.in_sidebar:
     case alt && shift && k == sdl.K_LEFT:
         swap_pane(a, -1)
     case alt && shift && k == sdl.K_RIGHT:

@@ -2,6 +2,7 @@ package oter
 
 import "core:fmt"
 import "core:os"
+import "core:time"
 import sdl "vendor:sdl3"
 import "oket:gfx"
 import "../pane"
@@ -12,7 +13,7 @@ APP_ID :: "oter"
 App :: struct {
     window:  ^sdl.Window,
     painter: gfx.Painter,
-    grid:    gfx.Grid,
+    frame:   Frame,
     theme:   gfx.Theme,
     panes:   [dynamic]pane.Pane,
     active:  int,
@@ -70,7 +71,7 @@ main :: proc() {
     }
     defer gfx.painter_destroy(&a.painter)
     gfx.painter_set_scale(&a.painter, len(faces) > 0 ? 1 : sx)
-    defer gfx.grid_destroy(&a.grid)
+    defer frame_destroy(&a.frame)
 
     start := os.get_working_directory(context.allocator) or_else "/"
     defer delete(start)
@@ -89,15 +90,24 @@ main :: proc() {
 
     term0_start(&a)
 
-    // Redraw only when something happened.
+    // Redraw only when something happened, or while something slides.
+    last := time.tick_now()
     for a.running {
+        moving := frame_step(&a, f32(time.duration_seconds(time.tick_lap_time(&last))))
         draw(&a)
         sdl.GL_SwapWindow(a.window)
         free_all(context.temp_allocator)
 
         ev: sdl.Event
-        if !sdl.WaitEvent(&ev) {
-            continue
+        if moving {
+            if !sdl.WaitEventTimeout(&ev, 8) {
+                continue
+            }
+        } else {
+            if !sdl.WaitEvent(&ev) {
+                continue
+            }
+            last = time.tick_now() // the wait is not motion time
         }
         handle(&a, ev)
         for sdl.PollEvent(&ev) {
