@@ -4,6 +4,7 @@ import sdl "vendor:sdl3"
 import "../pane"
 
 handle :: proc(a: ^App, ev: sdl.Event) {
+    // (hole mouse :tags input :sev gap :needs send-to-pane) no click, wheel or drag.
     #partial switch ev.type {
     case .QUIT:
         a.running = false
@@ -12,6 +13,7 @@ handle :: proc(a: ^App, ev: sdl.Event) {
     }
 }
 
+// (hole binds :tags input :sev gap :needs cl-input) keys are hard-coded, not CL strings from binds.conf.
 key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     alt := mod & sdl.KMOD_ALT != {}
     shift := mod & sdl.KMOD_SHIFT != {}
@@ -22,6 +24,13 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     switch {
     case ctrl && k == sdl.K_Q:
         a.running = false
+    case alt && k == sdl.K_C: // prototype: open or close the drawer; only a TUI makes it full
+        a.drawer = a.drawer == .Closed ? .Open : .Closed
+    case k == sdl.K_ESCAPE && a.drawer == .Open: // full belongs to the TUI, which wants Esc
+        a.drawer = .Closed
+    case k == sdl.K_TAB:
+        a.in_sidebar = !a.in_sidebar
+    // (hole sidebar-keys :tags (ui input) :sev gap :needs places) keys still drive the pane while the sidebar has focus.
     case alt && shift && k == sdl.K_LEFT:
         swap_pane(a, -1)
     case alt && shift && k == sdl.K_RIGHT:
@@ -31,7 +40,7 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     case alt && k == sdl.K_RIGHT:
         a.active = min(a.active + 1, len(a.panes) - 1)
     case alt || ctrl || shift:
-        // copy/move go here
+        // (hole send-to-pane :tags (files input) :sev blocker :needs (marks ghost-rows status-line)) shift/ctrl+arrows do nothing.
     case k == sdl.K_UP:
         pane.move(p, -1)
     case k == sdl.K_DOWN:

@@ -16,6 +16,8 @@ App :: struct {
     theme:   gfx.Theme,
     panes:   [dynamic]pane.Pane,
     active:  int,
+    drawer:  Drawer,
+    in_sidebar: bool, // Tab enters it and leaves it; `active` is the pane to return to
     running: bool,
 }
 
@@ -72,6 +74,7 @@ main :: proc() {
 
     start := os.get_working_directory(context.allocator) or_else "/"
     defer delete(start)
+    // (hole config :tags config :sev gap) pane count and theme are fixed; no config.conf.
     for _ in 0 ..< 2 {
         p: pane.Pane
         pane.open(&p, start)
@@ -83,6 +86,8 @@ main :: proc() {
         }
         delete(a.panes)
     }
+
+    term0_start(&a)
 
     // Redraw only when something happened.
     for a.running {

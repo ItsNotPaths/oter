@@ -5,6 +5,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 
+// (hole marks :tags files :sev blocker) no mark state; y does nothing.
 Entry :: struct {
     name:   string,
     is_dir: bool,
