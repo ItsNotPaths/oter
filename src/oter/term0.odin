@@ -30,14 +30,10 @@ term0_start :: proc(a: ^App) -> bool {
 
 // Sends one shell step: in the pane's dir, reporting its exit code with `a.step_id`.
 term0_run :: proc(a: ^App, cmd: string) -> bool {
-    t := &a.term0
-    if !pty.terminal_alive(t) {
-        pty.terminal_close(t)
-        t^ = {}
-        if !term0_start(a) {
-            return false
-        }
+    if !term0_ensure(a) {
+        return false
     }
+    t := &a.term0
     a.step_id += 1
     t.exit_ready = false // a report still standing is an older step's
     dir := cl.sh_quote(a.panes[a.active].dir, context.temp_allocator)
@@ -46,8 +42,31 @@ term0_run :: proc(a: ^App, cmd: string) -> bool {
     return true
 }
 
-// Each frame: output into the vt, its size from the drawer at rest, full and focused while a
-// TUI is up, and the waiting step's report back to the chain.
+// A dead shell is replaced by a fresh one.
+@(private = "file")
+term0_ensure :: proc(a: ^App) -> bool {
+    t := &a.term0
+    if pty.terminal_alive(t) {
+        return true
+    }
+    pty.terminal_close(t)
+    t^ = {}
+    return term0_start(a)
+}
+
+// The active pane moves to the shell's dir. False if it was already there.
+@(private = "file")
+pane_follow_shell :: proc(a: ^App) -> bool {
+    p := &a.panes[a.active]
+    dir := pty.terminal_cwd(&a.term0)
+    if dir == "" || dir == p.dir {
+        return false
+    }
+    pane.open(p, dir)
+    return true
+}
+
+// Each frame: drain output, size the vt, track a TUI, and report the waiting step.
 term0_pump :: proc(a: ^App) {
     t := &a.term0
     pty.terminal_drain(t)
@@ -79,30 +98,19 @@ term0_pump :: proc(a: ^App) {
     code := t.exit_code
     last := last_output_line(a)
     status_set(a, code == 0 ? last : fmt.tprintf("exit %d: %s", code, last), code != 0)
-    p := &a.panes[a.active]
-    if dir := pty.terminal_cwd(t); dir != "" && dir != p.dir {
-        pane.open(p, dir)
-    } else {
-        pane.relist(p) // the step may have changed what is here
+    if !pane_follow_shell(a) {
+        pane.relist(&a.panes[a.active]) // the step may have changed what is here
     }
     cl.job_done(&a.chain, code)
     chain_pump(a)
 }
 
-// The tray up is the terminal: half-typed CL text carries into its prompt, and the shell
-// stands in the pane's dir.
+// The tray up is the terminal: half-typed CL text goes to its prompt, in the pane's dir.
 tray_up :: proc(a: ^App) {
-    if a.drawer != .Closed {
+    if a.drawer != .Closed || !term0_ensure(a) {
         return
     }
     t := &a.term0
-    if !pty.terminal_alive(t) {
-        pty.terminal_close(t)
-        t^ = {}
-        if !term0_start(a) {
-            return
-        }
-    }
     if pty.terminal_at_prompt(t) {
         if dir := a.panes[a.active].dir; pty.terminal_cwd(t) != dir {
             line := fmt.tprintf(" cd -- %s\n", cl.sh_quote(dir, context.temp_allocator))
@@ -127,10 +135,7 @@ tray_down :: proc(a: ^App) {
         return
     }
     a.drawer = .Closed
-    p := &a.panes[a.active]
-    if dir := pty.terminal_cwd(&a.term0); dir != "" && dir != p.dir {
-        pane.open(p, dir)
-    }
+    pane_follow_shell(a)
 }
 
 // term0 takes the keys exactly while the tray is up.
@@ -182,37 +187,8 @@ term_key :: proc(a: ^App, ev: sdl.KeyboardEvent) {
         tray_down(a)
         return
     }
-    key: vt.Key
-    switch input.key_name(code) {
-    case "RTRN", "KPEN":
-        key = .Enter
-    case "TAB":
-        key = .Tab
-    case "BKSP":
-        key = .Backspace
-    case "ESC":
-        key = .Escape
-    case "UP":
-        key = .Up
-    case "DOWN":
-        key = .Down
-    case "LEFT":
-        key = .Left
-    case "RGHT":
-        key = .Right
-    case "HOME":
-        key = .Home
-    case "END":
-        key = .End
-    case "INS":
-        key = .Ins
-    case "DELE":
-        key = .Del
-    case "PGUP":
-        key = .PageUp
-    case "PGDN":
-        key = .PageDown
-    case:
+    key, named := vt_key(code)
+    if !named {
         // Ctrl+letter follows the layout's letter; a printable arrives as TEXT_INPUT.
         if mods == {.Ctrl} || mods == {.Ctrl, .Shift} {
             if l := layout_name(code); len(l) == 1 && l[0] >= 'a' && l[0] <= 'z' {
@@ -231,6 +207,27 @@ term_key :: proc(a: ^App, ev: sdl.KeyboardEvent) {
     pty.terminal_input_key(&a.term0, key, m)
 }
 
+@(private = "file")
+vt_key :: proc(code: input.Code) -> (vt.Key, bool) {
+    switch input.key_name(code) {
+    case "RTRN", "KPEN": return .Enter, true
+    case "TAB":          return .Tab, true
+    case "BKSP":         return .Backspace, true
+    case "ESC":          return .Escape, true
+    case "UP":           return .Up, true
+    case "DOWN":         return .Down, true
+    case "LEFT":         return .Left, true
+    case "RGHT":         return .Right, true
+    case "HOME":         return .Home, true
+    case "END":          return .End, true
+    case "INS":          return .Ins, true
+    case "DELE":         return .Del, true
+    case "PGUP":         return .PageUp, true
+    case "PGDN":         return .PageDown, true
+    }
+    return {}, false
+}
+
 term_text :: proc(a: ^App, text: cstring) {
     if sdl.GetModState() & (sdl.KMOD_ALT | sdl.KMOD_CTRL) != {} {
         return
@@ -239,51 +236,3 @@ term_text :: proc(a: ^App, text: cstring) {
         pty.terminal_input_rune(&a.term0, r)
     }
 }
-
-// term0's cells, its bottom row on the region's bottom row, so a slide shows the prompt first.
-draw_term :: proc(a: ^App, r: ^Region) {
-    th := a.theme
-    g := &r.grid
-    gfx.grid_clear(g, th[.Fg], gfx.opaque(th[.Bg]))
-    t := &a.term0
-    if !pty.terminal_alive(t) {
-        cols, _ := region_cells(a, r)
-        write_clipped(g, 0, 0, cols, "term0: no shell; the next shell line starts one", th[.Dim], gfx.opaque(th[.Bg]), {})
-        return
-    }
-    _, rows := region_cells(a, r)
-    top := t.rows - rows // vt rows above the region
-    crow, ccol := pty.terminal_cursor(t)
-    for row in max(top, 0) ..< t.rows {
-        for col in 0 ..< t.cols {
-            cell := pty.terminal_cell(t, row, col) or_continue
-            fg, fdef := pty.terminal_color(t, cell.fg)
-            bg, bdef := pty.terminal_color(t, cell.bg)
-            if fdef {
-                fg = th[.Fg]
-            }
-            if bdef {
-                bg = th[.Bg]
-            }
-            if cell.attrs.reverse != (a.in_term && row == crow && col == ccol) {
-                fg, bg = bg, fg
-            }
-            attrs: gfx.Attrs
-            if cell.attrs.bold {
-                attrs += {.Bold}
-            }
-            if cell.attrs.italic {
-                attrs += {.Italic}
-            }
-            if cell.attrs.underline != 0 {
-                attrs += {.Underline}
-            }
-            ch := rune(cell.chars[0])
-            if ch == 0 {
-                ch = ' '
-            }
-            gfx.grid_put(g, col, row - top, gfx.Cell{ch, fg, gfx.opaque(bg), attrs, 0})
-        }
-    }
-}
-

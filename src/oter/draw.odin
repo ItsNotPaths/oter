@@ -5,6 +5,7 @@ import "core:strings"
 import "core:unicode/utf8"
 import sdl "vendor:sdl3"
 import "oket:gfx"
+import "oket:pty"
 import "../pane"
 
 // Each pane: a path row, then the list.
@@ -136,5 +137,52 @@ write_clipped :: proc(g: ^gfx.Grid, x, y, width: int, text: string, fg: [3]f32, 
         }
         gfx.grid_put(g, col, y, gfx.Cell{r, fg, bg, attrs, 0})
         col += 1
+    }
+}
+
+// term0's cells, its bottom row on the region's bottom row, so a slide shows the prompt first.
+draw_term :: proc(a: ^App, r: ^Region) {
+    th := a.theme
+    g := &r.grid
+    gfx.grid_clear(g, th[.Fg], gfx.opaque(th[.Bg]))
+    t := &a.term0
+    if !pty.terminal_alive(t) {
+        cols, _ := region_cells(a, r)
+        write_clipped(g, 0, 0, cols, "term0: no shell; the next shell line starts one", th[.Dim], gfx.opaque(th[.Bg]), {})
+        return
+    }
+    _, rows := region_cells(a, r)
+    top := t.rows - rows // vt rows above the region
+    crow, ccol := pty.terminal_cursor(t)
+    for row in max(top, 0) ..< t.rows {
+        for col in 0 ..< t.cols {
+            cell := pty.terminal_cell(t, row, col) or_continue
+            fg, fdef := pty.terminal_color(t, cell.fg)
+            bg, bdef := pty.terminal_color(t, cell.bg)
+            if fdef {
+                fg = th[.Fg]
+            }
+            if bdef {
+                bg = th[.Bg]
+            }
+            if cell.attrs.reverse != (a.in_term && row == crow && col == ccol) {
+                fg, bg = bg, fg
+            }
+            attrs: gfx.Attrs
+            if cell.attrs.bold {
+                attrs += {.Bold}
+            }
+            if cell.attrs.italic {
+                attrs += {.Italic}
+            }
+            if cell.attrs.underline != 0 {
+                attrs += {.Underline}
+            }
+            ch := rune(cell.chars[0])
+            if ch == 0 {
+                ch = ' '
+            }
+            gfx.grid_put(g, col, row - top, gfx.Cell{ch, fg, gfx.opaque(bg), attrs, 0})
+        }
     }
 }

@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "core:unicode/utf8"
 import sdl "vendor:sdl3"
 import "oket:input"
 
@@ -60,13 +59,9 @@ binds_parse :: proc(binds: ^[dynamic]input.Bind, text, file: string, resolve: in
         }
         if line[0] == '[' && line[len(line) - 1] == ']' {
             name := line[1:len(line) - 1]
-            found := false
-            for s, i in SECTION_NAMES {
-                if s == name {
-                    section, found = input.Section(i), true
-                }
-            }
-            if !found {
+            if s, ok := section_of(name); ok {
+                section = s
+            } else {
                 append(&bad, fmt.aprintf("%s:%d: no section [%s]", file, n + 1, name))
             }
             continue
@@ -85,6 +80,16 @@ binds_parse :: proc(binds: ^[dynamic]input.Bind, text, file: string, resolve: in
         bind_put(binds, chord, value == "none" ? "" : value, section, n + 1)
     }
     return
+}
+
+@(private = "file")
+section_of :: proc(name: string) -> (input.Section, bool) {
+    for s, i in SECTION_NAMES {
+        if s == name {
+            return input.Section(i), true
+        }
+    }
+    return {}, false
 }
 
 @(private = "file")
@@ -146,48 +151,4 @@ bind_run :: proc(a: ^App, ev: sdl.KeyboardEvent) -> bool {
     }
     run_line(a, b.line)
     return true
-}
-
-mods_of :: proc(mod: sdl.Keymod) -> (m: input.Mods) {
-    if mod & sdl.KMOD_SHIFT != {} {
-        m += {.Shift}
-    }
-    if mod & sdl.KMOD_CTRL != {} {
-        m += {.Ctrl}
-    }
-    if mod & sdl.KMOD_ALT != {} {
-        m += {.Alt}
-    }
-    if mod & sdl.KMOD_GUI != {} {
-        m += {.Super}
-    }
-    return
-}
-
-SCANCODE_COUNT :: 512
-
-// The position that types `name` under the current layout (oket's input.odin).
-key_layout_code :: proc(name: string) -> (input.Code, bool) {
-    if name == "" {
-        return 0, false
-    }
-    for sc in 1 ..< SCANCODE_COUNT {
-        if layout_name(input.Code(sc)) == name {
-            return input.Code(sc), true
-        }
-    }
-    return 0, false
-}
-
-// What a position types under the current layout, "" for keys that type nothing.
-layout_name :: proc(code: input.Code) -> string {
-    if code == 0 || int(code) >= SCANCODE_COUNT {
-        return ""
-    }
-    key := u32(sdl.GetKeyFromScancode(sdl.Scancode(code), sdl.KMOD_NONE, false))
-    if key <= ' ' || key == 0x7f || key >= u32(sdl.K_EXTENDED_MASK) {
-        return ""
-    }
-    buf, n := utf8.encode_rune(rune(key))
-    return fmt.tprint(string(buf[:n]))
 }

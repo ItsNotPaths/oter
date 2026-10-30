@@ -7,8 +7,7 @@ import "core:strings"
 import "oket:cl"
 import "../pane"
 
-// Runs a CL line: builtins in-process, shell steps in a pipe as filters, a shell step on its
-// own in term0. `$o_src` is the cursor item, `$o_dir` the pane's dir.
+// Builtins in-process, piped shell steps as filters, a lone shell step in term0.
 run_line :: proc(a: ^App, line: string) {
     ch := &a.chain
     if ch.waiting {
@@ -131,13 +130,17 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     return true
 }
 
-// `@N` / `@±N` as a pane index. No pane there is not ok.
+// `@N` / `@±N`: one pane, not a slot or a set.
 @(private = "file")
-pane_target :: proc(a: ^App, args: string) -> (int, bool) {
+pane_ref :: proc(args: string) -> (cl.Target, bool) {
     t, _, parsed := cl.target_parse(args)
-    if !parsed || t.slot != 0 || t.slots || t.how == .Showing || t.how == .All {
-        return 0, false
-    }
+    return t, parsed && t.slot == 0 && !t.slots && t.how != .Showing && t.how != .All
+}
+
+// A pane ref as a pane index. No pane there is not ok.
+@(private = "file")
+pane_target :: proc(a: ^App, args: string) -> (i: int, ok: bool) {
+    t := pane_ref(args) or_return
     return cl.target_index(t, a.active, len(a.panes))
 }
 
@@ -186,10 +189,7 @@ builtin_send :: proc(a: ^App, step: cl.Step, args: string, move: bool) -> bool {
 @(private = "file")
 target_dir :: proc(a: ^App, args: string) -> (dir: string, ok: bool) {
     if args == "" || args[0] == '@' || args[0] == '#' {
-        t, _, parsed := cl.target_parse(args)
-        if !parsed || t.slot != 0 || t.slots || t.how == .Showing || t.how == .All {
-            return "", false
-        }
+        t := pane_ref(args) or_return
         i, has := cl.target_index(t, a.active, len(a.panes))
         return has ? a.panes[i].dir : "", true // no pane there is ok: nothing to do
     }
