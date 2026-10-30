@@ -116,3 +116,21 @@ selection_is_marks_else_cursor :: proc(t: ^testing.T) {
     pane.toggle_mark(&p) // unmark b.txt
     testing.expect_value(t, len(pane.selection(&p)), 1)
 }
+
+@(test)
+relist_shows_new_files_and_keeps_cursor :: proc(t: ^testing.T) {
+    root := make_tree(t)
+    defer {os.remove_all(root); delete(root)}
+
+    p: pane.Pane
+    defer pane.destroy(&p)
+    pane.open(&p, root)
+    pane.move(&p, 3) // b.txt
+    testing.expect(t, os.write_entire_file(filepath.join({root, "a2.txt"}, context.temp_allocator) or_else "", []u8{}) == nil)
+
+    pane.relist(&p)
+    testing.expect_value(t, p.err, nil)
+    testing.expect_value(t, len(p.entries), 5)
+    e, _ := pane.current(&p)
+    testing.expect_value(t, e.name, "b.txt")
+}

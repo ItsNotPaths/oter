@@ -35,7 +35,7 @@ open :: proc(p: ^Pane, dir: string, select := "") {
     p.dir = new_dir
     p.cursor, p.top = 0, 0
 
-    infos, err := os.read_all_directory_by_path(dir, context.temp_allocator)
+    infos, err := os.read_all_directory_by_path(p.dir, context.temp_allocator)
     p.err = err
     for fi in infos {
         is_dir := fi.type == .Directory
