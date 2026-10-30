@@ -20,6 +20,7 @@ App :: struct {
     active:  int,
     drawer:  Drawer,
     in_sidebar: bool, // Tab enters it and leaves it; `active` is the pane to return to
+    sends:   [dynamic]Send,
     status:  string, // owned; the CL bar's text until the next one replaces it
     status_err: bool,
     running: bool,
@@ -85,6 +86,7 @@ main :: proc() {
     gfx.painter_set_scale(&a.painter, len(faces) > 0 ? 1 : sx)
     defer frame_destroy(&a.frame)
     defer delete(a.status)
+    defer delete(a.sends) // a send still running at quit is left to the OS
 
     start := os.get_working_directory(context.allocator) or_else "/"
     defer delete(start)
@@ -106,6 +108,7 @@ main :: proc() {
     // Redraw only when something happened, or while something slides.
     last := time.tick_now()
     for a.running {
+        jobs_poll(&a)
         moving := frame_step(&a, f32(time.duration_seconds(time.tick_lap_time(&last))))
         draw(&a)
         sdl.GL_SwapWindow(a.window)

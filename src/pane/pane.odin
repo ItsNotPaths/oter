@@ -55,6 +55,15 @@ open :: proc(p: ^Pane, dir: string, select := "") {
     }
 }
 
+// Lists the same dir again, cursor kept by name. Marks are dropped.
+relist :: proc(p: ^Pane) {
+    name := ""
+    if e, ok := current(p); ok {
+        name = strings.clone(e.name, context.temp_allocator)
+    }
+    open(p, p.dir, name)
+}
+
 destroy :: proc(p: ^Pane) {
     clear_entries(p)
     delete(p.entries)
@@ -84,6 +93,12 @@ toggle_mark :: proc(p: ^Pane) {
     }
     p.entries[p.cursor].marked = !p.entries[p.cursor].marked
     move(p, +1)
+}
+
+clear_marks :: proc(p: ^Pane) {
+    for &e in p.entries {
+        e.marked = false
+    }
 }
 
 // Full paths of the marked items, else of the cursor item.

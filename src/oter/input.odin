@@ -4,7 +4,7 @@ import sdl "vendor:sdl3"
 import "../pane"
 
 handle :: proc(a: ^App, ev: sdl.Event) {
-    // (hole mouse :tags input :sev gap :needs send-to-pane) no click, wheel or drag.
+    // (hole mouse :tags input :sev gap) no click, wheel or drag.
     #partial switch ev.type {
     case .QUIT:
         a.running = false
@@ -40,8 +40,9 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
         a.active = max(a.active - 1, 0)
     case alt && k == sdl.K_RIGHT:
         a.active = min(a.active + 1, len(a.panes) - 1)
+    case (shift || ctrl) && (k == sdl.K_LEFT || k == sdl.K_RIGHT):
+        send_to_pane(a, k == sdl.K_LEFT ? -1 : +1, move = ctrl)
     case alt || ctrl || shift:
-        // (hole send-to-pane :tags (files input) :sev blocker :needs ghost-rows) shift/ctrl+arrows do nothing.
     case k == sdl.K_Y:
         pane.toggle_mark(p)
     case k == sdl.K_UP:
@@ -61,6 +62,26 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     case k == sdl.K_BACKSPACE || k == sdl.K_LEFT:
         pane.up(p)
     }
+}
+
+// Sends the active pane's selection to the pane `dir` slots over. With one pane it does nothing.
+send_to_pane :: proc(a: ^App, dir: int, move: bool) {
+    to := a.active + dir
+    if to < 0 || to >= len(a.panes) {
+        return
+    }
+    from := &a.panes[a.active]
+    dst := a.panes[to].dir
+    if dst == from.dir {
+        status_set(a, "same dir on both sides", true)
+        return
+    }
+    srcs := pane.selection(from)
+    if len(srcs) == 0 {
+        return
+    }
+    send_start(a, srcs, from.dir, dst, move)
+    pane.clear_marks(from)
 }
 
 // Moves the active pane one slot left or right; focus follows it.

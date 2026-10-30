@@ -89,7 +89,6 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
         fg := e.is_dir ? th[.Accent] : th[.Fg]
         name := e.is_dir ? fmt.tprintf("%s/", e.name) : e.name
         row_bg := bg
-        // (hole ghost-rows :tags (ui files) :sev blocker) in-flight items do not show as greyed rows.
         if i == p.cursor {
             row_bg = gfx.opaque(active ? th[.Dim] : gfx.shade(th[.Dim], 50))
             for col in 0 ..< g.cols {
@@ -100,6 +99,17 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
             gfx.grid_put(g, 0, row + 1, gfx.Cell{'▎', th[.Accent], row_bg, {}, 0})
         }
         write_clipped(g, 1, row + 1, cols - 1, name, fg, row_bg, {}) // col 0 is the mark gutter
+    }
+    // Items still in flight to this dir, greyed under the list.
+    row := len(p.entries) - p.top
+    for name in ghosts(a, p.dir) {
+        if row >= rows {
+            break
+        }
+        if row >= 0 {
+            write_clipped(g, 1, row + 1, cols - 1, name, th[.Dim], bg, {})
+        }
+        row += 1
     }
 }
 
