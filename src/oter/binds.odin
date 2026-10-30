@@ -18,7 +18,7 @@ SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
 DEFAULT_BINDS :: `[global]
 ctrl+q      = :quit
 alt+;       = :line :
-alt+c       = :term
+alt+c       = :line
 alt+up      = :drawer open
 alt+down    = :drawer close
 esc         = :drawer close
@@ -36,6 +36,7 @@ right       = :enter
 backspace   = :parent
 left        = :parent
 y           = :mark
+e           = ${EDITOR:-vi} $o_src
 alt+left    = :focus @-1
 alt+right   = :focus @+1
 alt+shift+left  = :swap @-1

@@ -1,6 +1,7 @@
 package oter
 
 import "core:fmt"
+import "core:strings"
 import sdl "vendor:sdl3"
 import "oket:cl"
 import "oket:gfx"
@@ -8,6 +9,11 @@ import "oket:input"
 import vt "oket:libvterm"
 import "oket:pty"
 import "../pane"
+
+// Names the exit report once, so a step carries `;__oter <id> $?` and not the escape.
+// Doubled braces: this goes through fmt.
+@(private = "file")
+SETUP :: " export GIT_PAGER=cat PAGER=cat; __oter(){{ printf '\\033]%d;%%s;%%s\\007' \"$1\" \"$2\"; }}\n"
 
 // The hidden shell, started in the focused pane's dir. `a.term0` must not move once spawned.
 term0_start :: proc(a: ^App) -> bool {
@@ -17,71 +23,107 @@ term0_start :: proc(a: ^App) -> bool {
         return false
     }
     pty.terminal_set_default_colors(&a.term0, a.theme[.Fg], a.theme[.Bg])
+    setup := fmt.tprintf(SETUP, pty.OSC_EXIT_TAG)
+    pty.terminal_write(&a.term0, transmute([]u8)setup)
     return true
 }
 
-// Each frame: output into the vt, the size of the drawer at rest, full while a TUI is up.
-term0_pump :: proc(a: ^App) {
-    t := &a.term0
-    pty.terminal_drain(t)
-    if !pty.terminal_alive(t) {
-        if a.in_term {
-            term_leave(a)
-        }
-        return
-    }
-    switch {
-    case t.on_altscreen:
-        a.drawer = .Full
-    case a.drawer == .Full:
-        a.drawer = .Open
-    }
-    cw, ch := gfx.painter_cell(&a.painter)
-    rows := int(drawer_dest(a) + term_extra(a)) / ch
-    if rows > 0 && a.frame.win.x > 0 {
-        pty.terminal_resize(t, rows, int(a.frame.win.x) / cw)
-    }
-}
-
-// Rows the term gains over the drawer when focused: it takes the CL row.
-term_extra :: proc(a: ^App) -> f32 {
-    _, ch := gfx.painter_cell(&a.painter)
-    return a.in_term ? f32(ch) + GAP : 0
-}
-
-// `:term`: open the drawer and send keys to the shell, standing in the pane's dir.
-term_enter :: proc(a: ^App) {
+// Sends one shell step: in the pane's dir, reporting its exit code with `a.step_id`.
+term0_run :: proc(a: ^App, cmd: string) -> bool {
     t := &a.term0
     if !pty.terminal_alive(t) {
         pty.terminal_close(t)
         t^ = {}
         if !term0_start(a) {
-            return
+            return false
         }
     }
-    dir := a.panes[a.active].dir
-    if pty.terminal_cwd(t) != dir && pty.terminal_at_prompt(t) {
-        line := fmt.tprintf(" cd -- %s\n", cl.sh_quote(dir, context.temp_allocator)) // leading space: kept out of history
-        pty.terminal_write(t, transmute([]u8)line)
-    }
-    if a.drawer == .Closed {
-        a.drawer = .Open
-    }
-    a.in_term = true
-    _ = sdl.StartTextInput(a.window)
+    a.step_id += 1
+    t.exit_ready = false // a report still standing is an older step's
+    dir := cl.sh_quote(a.panes[a.active].dir, context.temp_allocator)
+    line := fmt.tprintf(" cd -- %s; %s ;__oter %d $?\n", dir, cmd, a.step_id) // leading space: kept out of history
+    pty.terminal_write(t, transmute([]u8)line)
+    return true
 }
 
-// Back to the panes; the focused pane follows the shell's dir.
-term_leave :: proc(a: ^App) {
-    a.in_term = false
-    _ = sdl.StopTextInput(a.window)
+// Each frame: output into the vt, its size from the drawer at rest, full and focused while a
+// TUI is up, and the waiting step's report back to the chain.
+term0_pump :: proc(a: ^App) {
+    t := &a.term0
+    pty.terminal_drain(t)
+    if !pty.terminal_alive(t) {
+        if a.chain.waiting {
+            status_set(a, "term0's shell exited mid-step", true)
+            cl.reset(&a.chain)
+        }
+        term_focus(a, false)
+        return
+    }
+    if t.on_altscreen && a.drawer != .Full {
+        a.drawer_before, a.drawer = a.drawer, .Full
+    } else if !t.on_altscreen && a.drawer == .Full {
+        a.drawer = a.drawer_before
+    }
+    term_focus(a, t.on_altscreen || a.chain.waiting)
+
+    // Sized as the tray shows it even while shut, so output wraps where you will read it.
+    cw, ch := gfx.painter_cell(&a.painter)
+    if rows := int(drawer_height(a, a.drawer == .Full ? .Full : .Open)) / ch; rows > 0 && a.frame.win.x > 0 {
+        pty.terminal_resize(t, rows, int(a.frame.win.x) / cw)
+    }
+
+    if !a.chain.waiting || !t.exit_ready || t.exit_id != a.step_id {
+        return
+    }
+    t.exit_ready = false
+    code := t.exit_code
+    last := last_output_line(a)
+    status_set(a, code == 0 ? last : fmt.tprintf("exit %d: %s", code, last), code != 0)
     p := &a.panes[a.active]
-    if dir := pty.terminal_cwd(&a.term0); dir != "" && dir != p.dir {
+    if dir := pty.terminal_cwd(t); dir != "" && dir != p.dir {
         pane.open(p, dir)
+    } else {
+        pane.relist(p) // the step may have changed what is here
     }
+    cl.job_done(&a.chain, code)
+    chain_pump(a)
 }
 
-// A key while focused: alt chords stay oter's binds, everything else is the shell's.
+// Keys go to term0 while a TUI is up or a step runs: so ctrl+c and a password prompt work.
+@(private = "file")
+term_focus :: proc(a: ^App, on: bool) {
+    if on == a.in_term {
+        return
+    }
+    a.in_term = on
+    _ = on ? sdl.StartTextInput(a.window) : sdl.StopTextInput(a.window)
+}
+
+// The last non-blank row between the step's echoed line and the prompt now under the cursor.
+// (hole multiline-prompt :tags term :sev polish) a two-line prompt's first line is taken for output.
+@(private = "file")
+last_output_line :: proc(a: ^App) -> string {
+    t := &a.term0
+    crow, _ := pty.terminal_cursor(t)
+    tag := fmt.tprintf("__oter %d", a.step_id)
+    for row := crow - 1; row >= 0; row -= 1 {
+        b := strings.builder_make(context.temp_allocator)
+        for col in 0 ..< t.cols {
+            r := pty.terminal_cell_rune(t, row, col)
+            strings.write_rune(&b, r == 0 ? ' ' : r)
+        }
+        text := strings.trim_space(strings.to_string(b))
+        if strings.contains(text, tag) {
+            return "" // reached the echo: the step printed nothing
+        }
+        if text != "" {
+            return text
+        }
+    }
+    return ""
+}
+
+// A key while term0 has focus: alt chords stay oter's binds, everything else is the shell's.
 term_key :: proc(a: ^App, ev: sdl.KeyboardEvent) {
     code := input.Code(ev.scancode)
     mods := mods_of(ev.mod)
@@ -158,7 +200,7 @@ draw_term :: proc(a: ^App, r: ^Region) {
     t := &a.term0
     if !pty.terminal_alive(t) {
         cols, _ := region_cells(a, r)
-        write_clipped(g, 0, 0, cols, "term0: no shell; alt+c starts one", th[.Dim], gfx.opaque(th[.Bg]), {})
+        write_clipped(g, 0, 0, cols, "term0: no shell; the next shell line starts one", th[.Dim], gfx.opaque(th[.Bg]), {})
         return
     }
     _, rows := region_cells(a, r)
@@ -197,7 +239,3 @@ draw_term :: proc(a: ^App, r: ^Region) {
     }
 }
 
-// (hole edit :tags term :sev gap :needs (drawer-auto cl-shell)) `:edit` does not open $EDITOR on the cursor item in term0.
-edit_cursor_item :: proc(a: ^App) -> bool {
-    return false
-}

@@ -28,7 +28,9 @@ App :: struct {
     chain:   cl.Chain,
     binds:   [dynamic]input.Bind,
     term0:   pty.Terminal,
-    in_term: bool, // keys go to term0; the drawer has taken the CL row
+    in_term: bool, // keys go to term0: a TUI is up or a step runs
+    step_id: u64, // the term0 step the chain waits on
+    drawer_before: Drawer, // what a TUI's full drawer goes back to
     status:  string, // owned; the CL bar's text until the next one replaces it
     status_err: bool,
     running: bool,

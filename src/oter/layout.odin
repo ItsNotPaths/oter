@@ -11,7 +11,6 @@ BEHIND :: 12 // the ground in the gaps: Bg darkened
 RING_DARK :: 45 // a region's 1px rim, off the ground
 BAR_BEHIND :: 45 // the CL bar: Bg darkened
 
-// (hole drawer-auto :tags (ui term) :sev gap :needs cl-shell) drawer does not open when a step run from the CL fails or waits for input.
 Drawer :: enum {
     Closed,
     Open, // slides up from the CL bar, panes shrink above it
@@ -45,9 +44,13 @@ frame_destroy :: proc(f: ^Frame) {
 
 // The drawer's resting height for its state, in px.
 drawer_dest :: proc(a: ^App) -> f32 {
+    return drawer_height(a, a.drawer)
+}
+
+drawer_height :: proc(a: ^App, d: Drawer) -> f32 {
     _, ch := gfx.painter_cell(&a.painter)
     above := f32(a.frame.win.y) - f32(ch) - GAP
-    switch a.drawer {
+    switch d {
     case .Closed:
         return 0
     case .Open:
@@ -79,10 +82,7 @@ frame_fit :: proc(a: ^App, win_w, win_h: i32) {
     above := H - f32(ch) - GAP
     dh := clamp(f.drawer_h, 0, above)
     f.drawer.rect = {0, above - dh, W, dh}
-    if a.in_term { // the term takes the CL row
-        f.drawer.rect.h += term_extra(a)
-        f.cl.rect.h = 0
-    }
+
     body_h := max(above - dh - min(dh, GAP), 0) // the gap grows in with the drawer, no jump
 
     side_w := min(f32(SIDEBAR_COLS * cw), W / 3)

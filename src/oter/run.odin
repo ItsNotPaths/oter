@@ -7,19 +7,62 @@ import "core:strings"
 import "oket:cl"
 import "../pane"
 
-// Runs a CL line: builtins in-process, shell steps inside a pipe as filters.
+// Runs a CL line: builtins in-process, shell steps in a pipe as filters, a shell step on its
+// own in term0. `$o_src` is the cursor item, `$o_dir` the pane's dir.
 run_line :: proc(a: ^App, line: string) {
     ch := &a.chain
+    if ch.waiting {
+        status_set(a, "a shell step is still running", true)
+        return
+    }
     cl.parse(ch, line, a, proc(a: ^App, name: string) -> string {return ""}, proc(a: ^App, name: string) -> bool {
         return name == "line" // `:line <text>` takes the rest raw, operators and all
     })
+    p := &a.panes[a.active]
+    vars: cl.Vars
+    if e, ok := pane.current(p); ok {
+        vars[var("src")] = filepath.join({p.dir, e.name}, context.temp_allocator) or_else ""
+    }
+    vars[var("dir")] = p.dir
+    cl.vars_set(ch, vars)
+    chain_pump(a)
+}
+
+// Steps until the chain ends, or waits on a term0 step (term0_pump resumes it).
+chain_pump :: proc(a: ^App) {
+    ch := &a.chain
     for {
         step, ok := cl.next(ch)
         if !ok {
-            break
+            return
         }
-        cl.done(ch, step.shell ? run_shell(a, step) : run_builtin(a, step))
+        if !step.shell {
+            cl.done(ch, run_builtin(a, step))
+            continue
+        }
+        cmd, missing, filled := cl.fill(ch.vars, step.text)
+        if !filled {
+            cl.done(ch, fail(a, fmt.tprintf("no $o_%s here", missing)))
+            continue
+        }
+        if _, piped := cl.piped(ch, step); piped || step.feeds {
+            cl.done(ch, run_filter_step(a, step, cmd))
+            continue
+        }
+        if !term0_run(a, cmd) {
+            cl.done(ch, false)
+            continue
+        }
+        ch.waiting = true
+        return
     }
+}
+
+@(private = "file")
+var :: proc(name: string) -> int {
+    i, ok := cl.var_index(name)
+    assert(ok)
+    return i
 }
 
 @(private = "file")
@@ -42,8 +85,6 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         a.running = false
     case "line":
         cl_open(a, args)
-    case "term":
-        term_enter(a)
     case "sidebar":
         a.in_sidebar = !a.in_sidebar
     case "drawer":
@@ -53,9 +94,6 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
                 a.drawer = .Open
             }
         case "close":
-            if a.in_term {
-                term_leave(a)
-            }
             if a.drawer == .Open { // full belongs to the TUI
                 a.drawer = .Closed
             }
@@ -187,14 +225,10 @@ feed_paths :: proc(feed, base: string) -> []string {
 
 // A shell step inside a pipe: `sh -c` in the pane's dir, the feed on stdin, stdout passed on.
 @(private = "file")
-run_shell :: proc(a: ^App, step: cl.Step) -> bool {
-    feed, piped := cl.piped(&a.chain, step)
-    if !piped && !step.feeds {
-        // (hole cl-shell :tags (input term) :sev gap) a shell step on its own has no term0 to run in.
-        return fail(a, fmt.tprintf("%s: shell steps outside a pipe need term0", step.text))
-    }
+run_filter_step :: proc(a: ^App, step: cl.Step, cmd: string) -> bool {
+    feed, _ := cl.piped(&a.chain, step)
     // (hole filter-async :tags input :sev gap) a filter runs on the main thread; a slow one freezes the UI.
-    out, msg, ok := run_filter(step.text, feed, a.panes[a.active].dir)
+    out, msg, ok := run_filter(cmd, feed, a.panes[a.active].dir)
     if !ok {
         return fail(a, msg)
     }
