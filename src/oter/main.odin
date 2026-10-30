@@ -14,6 +14,15 @@ import "../pane"
 TITLE :: "oter"
 APP_ID :: "oter"
 
+// Who gets the keys. Panes is the hub: the sidebar and the line open only from it, and
+// Line > Term is one offshoot. Term covers the tray and a TUI's full drawer.
+Mode :: enum {
+    Panes,
+    Sidebar,
+    Line,
+    Term,
+}
+
 App :: struct {
     window:  ^sdl.Window,
     painter: gfx.Painter,
@@ -22,13 +31,12 @@ App :: struct {
     panes:   [dynamic]pane.Pane,
     active:  int,
     drawer:  Drawer,
-    in_sidebar: bool, // Tab enters it and leaves it; `active` is the pane to return to
+    mode:    Mode,
     sends:   [dynamic]Send,
     line:    Cl,
     chain:   cl.Chain,
     binds:   [dynamic]input.Bind,
     term0:   pty.Terminal,
-    in_term: bool, // keys go to term0: the tray is up
     step_id: u64, // the term0 step the chain waits on
     drawer_before: Drawer, // what a TUI's full drawer goes back to
     status:  string, // owned; the CL bar's text until the next one replaces it

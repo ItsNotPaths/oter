@@ -6,7 +6,6 @@ import sdl "vendor:sdl3"
 
 // The one-line editor in the CL bar. `cursor` is a byte offset into `text`.
 Cl :: struct {
-    on:     bool,
     text:   [dynamic]u8,
     cursor: int,
 }
@@ -15,18 +14,12 @@ cl_open :: proc(a: ^App, pre: string) {
     clear(&a.line.text)
     append(&a.line.text, pre)
     a.line.cursor = len(pre)
-    a.line.on = true
-    _ = sdl.StartTextInput(a.window)
-}
-
-cl_close :: proc(a: ^App) {
-    a.line.on = false
-    _ = sdl.StopTextInput(a.window)
+    mode_set(a, .Line)
 }
 
 // Typed text. Ignored under alt or ctrl, so the chord that opened the line does not land in it.
 cl_text :: proc(a: ^App, text: cstring) {
-    if !a.line.on || sdl.GetModState() & (sdl.KMOD_ALT | sdl.KMOD_CTRL) != {} {
+    if sdl.GetModState() & (sdl.KMOD_ALT | sdl.KMOD_CTRL) != {} {
         return
     }
     s := string(text)
@@ -39,10 +32,10 @@ cl_key :: proc(a: ^App, k: sdl.Keycode) {
     c := &a.line
     switch k {
     case sdl.K_ESCAPE:
-        cl_close(a)
+        mode_set(a, .Panes)
     case sdl.K_RETURN, sdl.K_KP_ENTER:
         line := strings.clone(string(c.text[:]), context.temp_allocator)
-        cl_close(a)
+        mode_set(a, .Panes)
         run_line(a, line)
     case sdl.K_BACKSPACE:
         if c.cursor > 0 {

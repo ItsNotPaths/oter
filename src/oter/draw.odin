@@ -25,7 +25,7 @@ draw :: proc(a: ^App) {
 
     draw_sidebar(a, &f.sidebar)
     for &p, i in a.panes {
-        draw_pane(a, &p, &f.panes[i], i == a.active && !a.in_sidebar)
+        draw_pane(a, &p, &f.panes[i], i == a.active && a.mode != .Sidebar)
     }
     draw_term(a, &f.drawer)
     draw_cl(a, &f.cl)
@@ -50,7 +50,7 @@ draw_sidebar :: proc(a: ^App, r: ^Region) {
     g := &r.grid
     gfx.grid_clear(g, th[.Fg], gfx.opaque(th[.Bg]))
     cols, _ := region_cells(a, r)
-    header(g, cols, "places", a.in_sidebar, th)
+    header(g, cols, "places", a.mode == .Sidebar, th)
 }
 
 draw_cl :: proc(a: ^App, r: ^Region) {
@@ -59,7 +59,7 @@ draw_cl :: proc(a: ^App, r: ^Region) {
     g := &r.grid
     gfx.grid_clear(g, th[.Fg], bar)
     cols, _ := region_cells(a, r)
-    if !a.line.on {
+    if a.mode != .Line {
         write_clipped(g, 1, 0, cols - 1, a.status, a.status_err ? th[.Alert] : th[.Fg], bar, {})
         return
     }
@@ -165,7 +165,7 @@ draw_term :: proc(a: ^App, r: ^Region) {
             if bdef {
                 bg = th[.Bg]
             }
-            if cell.attrs.reverse != (a.in_term && row == crow && col == ccol) {
+            if cell.attrs.reverse != (a.mode == .Term && row == crow && col == ccol) {
                 fg, bg = bg, fg
             }
             attrs: gfx.Attrs

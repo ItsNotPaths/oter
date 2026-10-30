@@ -11,24 +11,35 @@ handle :: proc(a: ^App, ev: sdl.Event) {
     case .QUIT:
         a.running = false
     case .KEY_DOWN:
-        if a.in_term {
+        switch a.mode {
+        case .Term:
             term_key(a, ev.key)
-        } else if a.line.on {
+        case .Line:
             if ev.key.mod & sdl.KMOD_ALT != {} {
-                bind_run(a, ev.key) // alt+up / alt+down work from the line too
+                bind_run(a, ev.key) // alt+up lifts the tray from the line
             } else {
                 cl_key(a, ev.key.key)
             }
-        } else {
+        case .Panes, .Sidebar:
             bind_run(a, ev.key)
         }
     case .TEXT_INPUT:
-        if a.in_term {
+        #partial switch a.mode {
+        case .Term:
             term_text(a, ev.text.text)
-        } else {
+        case .Line:
             cl_text(a, ev.text.text)
         }
     }
+}
+
+// Line and Term take typed text.
+mode_set :: proc(a: ^App, m: Mode) {
+    typed :: proc(m: Mode) -> bool {return m == .Line || m == .Term}
+    if typed(m) != typed(a.mode) {
+        _ = typed(m) ? sdl.StartTextInput(a.window) : sdl.StopTextInput(a.window)
+    }
+    a.mode = m
 }
 
 mods_of :: proc(mod: sdl.Keymod) -> (m: input.Mods) {

@@ -10,7 +10,7 @@ import "oket:input"
 SEC_GLOBAL :: input.Section(0)
 SEC_PANES :: input.Section(1)
 // (hole sidebar-keys :tags (ui input) :sev gap :needs places) the sidebar has no rows: no cursor, no enter.
-SEC_SIDEBAR :: input.Section(2) // empty by default, so it swallows the pane keys
+SEC_SIDEBAR :: input.Section(2) // no pane rows, so it swallows the pane keys
 
 SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
 
@@ -46,6 +46,7 @@ ctrl+left   = :sel | :move @-1
 ctrl+right  = :sel | :move @+1
 
 [sidebar]
+esc         = :sidebar
 `
 
 // Rows from `text` on top of `binds`: a chord already bound is replaced, `none` unbinds it.
@@ -144,7 +145,7 @@ bind_run :: proc(a: ^App, ev: sdl.KeyboardEvent) -> bool {
     if input.code_is_modifier(code) {
         return false
     }
-    path := a.in_sidebar ? []input.Section{SEC_SIDEBAR, SEC_GLOBAL} : []input.Section{SEC_PANES, SEC_GLOBAL}
+    path := a.mode == .Sidebar ? []input.Section{SEC_SIDEBAR, SEC_GLOBAL} : []input.Section{SEC_PANES, SEC_GLOBAL}
     b, ok := input.bind_lookup(a.binds[:], {code, mods_of(ev.mod)}, path)
     if !ok {
         return false

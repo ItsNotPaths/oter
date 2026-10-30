@@ -88,4 +88,6 @@ the_sidebar_swallows_pane_keys :: proc(t: ^testing.T) {
     testing.expect(t, !ok)
     line, _ := line_for(binds[:], "tab", sidebar)
     testing.expect_value(t, line, ":sidebar")
+    line, _ = line_for(binds[:], "esc", sidebar)
+    testing.expect_value(t, line, ":sidebar")
 }

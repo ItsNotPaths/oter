@@ -83,11 +83,16 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "quit":
         a.running = false
     case "line":
-        if a.drawer == .Closed { // with the tray up you are already in the term
+        if a.mode == .Panes {
             cl_open(a, args)
         }
     case "sidebar":
-        a.in_sidebar = !a.in_sidebar
+        #partial switch a.mode {
+        case .Panes:
+            mode_set(a, .Sidebar)
+        case .Sidebar:
+            mode_set(a, .Panes)
+        }
     case "drawer":
         switch args {
         case "open":

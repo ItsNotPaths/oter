@@ -75,15 +75,19 @@ term0_pump :: proc(a: ^App) {
             status_set(a, "term0's shell exited mid-step", true)
             cl.reset(&a.chain)
         }
-        term_focus(a, false)
+        if a.mode == .Term {
+            mode_set(a, .Panes)
+        }
+        a.drawer = .Closed
         return
     }
     if t.on_altscreen && a.drawer != .Full {
         a.drawer_before, a.drawer = a.drawer, .Full
+        mode_set(a, .Term)
     } else if !t.on_altscreen && a.drawer == .Full {
         a.drawer = a.drawer_before
+        mode_set(a, a.drawer == .Open ? .Term : .Panes)
     }
-    term_focus(a, a.drawer != .Closed)
 
     // Sized as the tray shows it even while shut, so output wraps where you will read it.
     cw, ch := gfx.painter_cell(&a.painter)
@@ -107,7 +111,7 @@ term0_pump :: proc(a: ^App) {
 
 // The tray up is the terminal: half-typed CL text goes to its prompt, in the pane's dir.
 tray_up :: proc(a: ^App) {
-    if a.drawer != .Closed || !term0_ensure(a) {
+    if (a.mode != .Panes && a.mode != .Line) || !term0_ensure(a) {
         return
     }
     t := &a.term0
@@ -116,36 +120,22 @@ tray_up :: proc(a: ^App) {
             line := fmt.tprintf(" cd -- %s\n", cl.sh_quote(dir, context.temp_allocator))
             pty.terminal_write(t, transmute([]u8)line)
         }
-        if a.line.on && !strings.has_prefix(string(a.line.text[:]), ":") {
+        if a.mode == .Line && !strings.has_prefix(string(a.line.text[:]), ":") {
             pty.terminal_write(t, a.line.text[:])
         }
     }
-    if a.line.on {
-        cl_close(a)
-    }
+    mode_set(a, .Term)
     a.drawer = .Open
 }
 
-// The tray down leaves the mode: no CL, no term, and the pane follows the shell's dir.
+// Back to the panes, which follow the shell's dir.
 tray_down :: proc(a: ^App) {
-    if a.line.on {
-        cl_close(a)
-    }
     if a.drawer != .Open { // full belongs to the TUI
         return
     }
     a.drawer = .Closed
+    mode_set(a, .Panes)
     pane_follow_shell(a)
-}
-
-// term0 takes the keys exactly while the tray is up.
-@(private = "file")
-term_focus :: proc(a: ^App, on: bool) {
-    if on == a.in_term {
-        return
-    }
-    a.in_term = on
-    _ = on ? sdl.StartTextInput(a.window) : sdl.StopTextInput(a.window)
 }
 
 // The last non-blank row between the step's echoed line and the prompt now under the cursor.
