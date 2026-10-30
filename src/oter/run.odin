@@ -84,19 +84,17 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "quit":
         a.running = false
     case "line":
-        cl_open(a, args)
+        if a.drawer == .Closed { // with the tray up you are already in the term
+            cl_open(a, args)
+        }
     case "sidebar":
         a.in_sidebar = !a.in_sidebar
     case "drawer":
         switch args {
         case "open":
-            if a.drawer == .Closed {
-                a.drawer = .Open
-            }
+            tray_up(a)
         case "close":
-            if a.drawer == .Open { // full belongs to the TUI
-                a.drawer = .Closed
-            }
+            tray_down(a)
         case:
             return fail(a, ":drawer takes open or close")
         }

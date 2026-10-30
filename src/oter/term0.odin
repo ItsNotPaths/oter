@@ -64,7 +64,7 @@ term0_pump :: proc(a: ^App) {
     } else if !t.on_altscreen && a.drawer == .Full {
         a.drawer = a.drawer_before
     }
-    term_focus(a, t.on_altscreen || a.chain.waiting)
+    term_focus(a, a.drawer != .Closed)
 
     // Sized as the tray shows it even while shut, so output wraps where you will read it.
     cw, ch := gfx.painter_cell(&a.painter)
@@ -89,7 +89,51 @@ term0_pump :: proc(a: ^App) {
     chain_pump(a)
 }
 
-// Keys go to term0 while a TUI is up or a step runs: so ctrl+c and a password prompt work.
+// The tray up is the terminal: half-typed CL text carries into its prompt, and the shell
+// stands in the pane's dir.
+tray_up :: proc(a: ^App) {
+    if a.drawer != .Closed {
+        return
+    }
+    t := &a.term0
+    if !pty.terminal_alive(t) {
+        pty.terminal_close(t)
+        t^ = {}
+        if !term0_start(a) {
+            return
+        }
+    }
+    if pty.terminal_at_prompt(t) {
+        if dir := a.panes[a.active].dir; pty.terminal_cwd(t) != dir {
+            line := fmt.tprintf(" cd -- %s\n", cl.sh_quote(dir, context.temp_allocator))
+            pty.terminal_write(t, transmute([]u8)line)
+        }
+        if a.line.on && !strings.has_prefix(string(a.line.text[:]), ":") {
+            pty.terminal_write(t, a.line.text[:])
+        }
+    }
+    if a.line.on {
+        cl_close(a)
+    }
+    a.drawer = .Open
+}
+
+// The tray down leaves the mode: no CL, no term, and the pane follows the shell's dir.
+tray_down :: proc(a: ^App) {
+    if a.line.on {
+        cl_close(a)
+    }
+    if a.drawer != .Open { // full belongs to the TUI
+        return
+    }
+    a.drawer = .Closed
+    p := &a.panes[a.active]
+    if dir := pty.terminal_cwd(&a.term0); dir != "" && dir != p.dir {
+        pane.open(p, dir)
+    }
+}
+
+// term0 takes the keys exactly while the tray is up.
 @(private = "file")
 term_focus :: proc(a: ^App, on: bool) {
     if on == a.in_term {
@@ -132,6 +176,10 @@ term_key :: proc(a: ^App, ev: sdl.KeyboardEvent) {
     }
     if .Alt in mods {
         bind_run(a, ev)
+        return
+    }
+    if a.drawer == .Open && code == input.Code(sdl.Scancode.ESCAPE) { // full: Esc is the TUI's
+        tray_down(a)
         return
     }
     key: vt.Key

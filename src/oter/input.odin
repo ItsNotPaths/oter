@@ -11,7 +11,11 @@ handle :: proc(a: ^App, ev: sdl.Event) {
         if a.in_term {
             term_key(a, ev.key)
         } else if a.line.on {
-            cl_key(a, ev.key.key)
+            if ev.key.mod & sdl.KMOD_ALT != {} {
+                bind_run(a, ev.key) // alt+up / alt+down work from the line too
+            } else {
+                cl_key(a, ev.key.key)
+            }
         } else {
             bind_run(a, ev.key)
         }

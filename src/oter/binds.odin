@@ -21,7 +21,6 @@ alt+;       = :line :
 alt+c       = :line
 alt+up      = :drawer open
 alt+down    = :drawer close
-esc         = :drawer close
 tab         = :sidebar
 
 [panes]
