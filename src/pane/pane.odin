@@ -5,10 +5,10 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 
-// (hole marks :tags files :sev blocker) no mark state; y does nothing.
 Entry :: struct {
     name:   string,
     is_dir: bool,
+    marked: bool,
 }
 
 Pane :: struct {
@@ -43,7 +43,7 @@ open :: proc(p: ^Pane, dir: string, select := "") {
             st, serr := os.stat(fi.fullpath, context.temp_allocator)
             is_dir = serr == nil && st.type == .Directory
         }
-        append(&p.entries, Entry{strings.clone(fi.name), is_dir})
+        append(&p.entries, Entry{name = strings.clone(fi.name), is_dir = is_dir})
     }
     slice.sort_by(p.entries[:], entry_less)
 
@@ -75,6 +75,31 @@ current :: proc(p: ^Pane) -> (Entry, bool) {
         return {}, false
     }
     return p.entries[p.cursor], true
+}
+
+// Flips the mark on the cursor item and steps down, so repeats mark a run.
+toggle_mark :: proc(p: ^Pane) {
+    if p.cursor < 0 || p.cursor >= len(p.entries) {
+        return
+    }
+    p.entries[p.cursor].marked = !p.entries[p.cursor].marked
+    move(p, +1)
+}
+
+// Full paths of the marked items, else of the cursor item.
+selection :: proc(p: ^Pane, alloc := context.temp_allocator) -> []string {
+    out := make([dynamic]string, alloc)
+    for e in p.entries {
+        if e.marked {
+            append(&out, filepath.join({p.dir, e.name}, alloc) or_else "")
+        }
+    }
+    if len(out) == 0 {
+        if e, ok := current(p); ok {
+            append(&out, filepath.join({p.dir, e.name}, alloc) or_else "")
+        }
+    }
+    return out[:]
 }
 
 move :: proc(p: ^Pane, delta: int) {

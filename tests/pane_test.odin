@@ -90,3 +90,29 @@ cursor_stays_in_view_and_in_range :: proc(t: ^testing.T) {
     pane.scroll(&p, 2)
     testing.expect_value(t, p.top, 0)
 }
+
+@(test)
+selection_is_marks_else_cursor :: proc(t: ^testing.T) {
+    root := make_tree(t)
+    defer {os.remove_all(root); delete(root)}
+
+    p: pane.Pane
+    defer pane.destroy(&p)
+    pane.open(&p, root) // Alpha, zeta, A.txt, b.txt
+
+    sel := pane.selection(&p)
+    testing.expect_value(t, len(sel), 1)
+    testing.expect_value(t, filepath.base(sel[0]), "Alpha")
+
+    pane.move(&p, 2)
+    pane.toggle_mark(&p) // A.txt, steps to b.txt
+    pane.toggle_mark(&p) // b.txt
+    sel = pane.selection(&p)
+    testing.expect_value(t, len(sel), 2)
+    testing.expect_value(t, sel[0], filepath.join({root, "A.txt"}, context.temp_allocator) or_else "")
+    testing.expect_value(t, filepath.base(sel[1]), "b.txt")
+
+    pane.move(&p, -1)
+    pane.toggle_mark(&p) // unmark b.txt
+    testing.expect_value(t, len(pane.selection(&p)), 1)
+}

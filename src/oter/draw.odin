@@ -97,7 +97,10 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
                 gfx.grid_put(g, col, row + 1, gfx.Cell{' ', fg, row_bg, {}, 0})
             }
         }
-        write_clipped(g, 0, row + 1, cols, name, fg, row_bg, {})
+        if e.marked {
+            gfx.grid_put(g, 0, row + 1, gfx.Cell{'▎', th[.Accent], row_bg, {}, 0})
+        }
+        write_clipped(g, 1, row + 1, cols - 1, name, fg, row_bg, {}) // col 0 is the mark gutter
     }
 }
 
