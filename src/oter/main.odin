@@ -6,6 +6,7 @@ import "core:time"
 import sdl "vendor:sdl3"
 import "oket:cl"
 import "oket:gfx"
+import "oket:input"
 import "../fsop"
 import "../pane"
 
@@ -24,6 +25,7 @@ App :: struct {
     sends:   [dynamic]Send,
     line:    Cl,
     chain:   cl.Chain,
+    binds:   [dynamic]input.Bind,
     status:  string, // owned; the CL bar's text until the next one replaces it
     status_err: bool,
     running: bool,
@@ -91,6 +93,8 @@ main :: proc() {
     defer delete(a.status)
     defer delete(a.line.text)
     defer cl.destroy(&a.chain)
+    defer input.binds_destroy(&a.binds)
+    binds_load(&a)
     defer delete(a.sends) // a send still running at quit is left to the OS
 
     start := os.get_working_directory(context.allocator) or_else "/"

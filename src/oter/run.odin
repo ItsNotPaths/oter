@@ -10,7 +10,9 @@ import "../pane"
 // Runs a CL line: builtins in-process, shell steps inside a pipe as filters.
 run_line :: proc(a: ^App, line: string) {
     ch := &a.chain
-    cl.parse(ch, line, a, proc(a: ^App, name: string) -> string {return ""})
+    cl.parse(ch, line, a, proc(a: ^App, name: string) -> string {return ""}, proc(a: ^App, name: string) -> bool {
+        return name == "line" // `:line <text>` takes the rest raw, operators and all
+    })
     for {
         step, ok := cl.next(ch)
         if !ok {
@@ -30,13 +32,72 @@ fail :: proc(a: ^App, msg: string) -> bool {
 run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     name := cl.first_field(step.text)
     args := strings.trim_space(step.text[len(name):])
+    p := &a.panes[a.active]
     switch name {
     case "sel":
         return builtin_sel(a)
     case "copy", "move":
         return builtin_send(a, step, args, name == "move")
+    case "quit":
+        a.running = false
+    case "line":
+        cl_open(a, args)
+    case "sidebar":
+        a.in_sidebar = !a.in_sidebar
+    case "drawer":
+        switch args {
+        case "open":
+            if a.drawer == .Closed {
+                a.drawer = .Open
+            }
+        case "close":
+            if a.drawer == .Open { // full belongs to the TUI
+                a.drawer = .Closed
+            }
+        case:
+            return fail(a, ":drawer takes open or close")
+        }
+    case "up":
+        pane.move(p, -1)
+    case "down":
+        pane.move(p, +1)
+    case "pgup":
+        pane.move(p, -max(list_rows(a) - 1, 1))
+    case "pgdn":
+        pane.move(p, +max(list_rows(a) - 1, 1))
+    case "top":
+        pane.move(p, -len(p.entries))
+    case "bottom":
+        pane.move(p, +len(p.entries))
+    case "enter":
+        pane.enter(p)
+    case "parent":
+        pane.up(p)
+    case "mark":
+        pane.toggle_mark(p)
+    case "focus", "swap":
+        i, ok := pane_target(a, args)
+        if !ok {
+            return fail(a, fmt.tprintf(":%s: %s is not a pane", name, args))
+        }
+        if name == "swap" {
+            a.panes[a.active], a.panes[i] = a.panes[i], a.panes[a.active]
+        }
+        a.active = i
+    case:
+        return fail(a, fmt.tprintf(":%s: no such builtin", name))
     }
-    return fail(a, fmt.tprintf(":%s: no such builtin", name))
+    return true
+}
+
+// `@N` / `@±N` as a pane index. No pane there is not ok.
+@(private = "file")
+pane_target :: proc(a: ^App, args: string) -> (int, bool) {
+    t, _, parsed := cl.target_parse(args)
+    if !parsed || t.slot != 0 || t.slots || t.how == .Showing || t.how == .All {
+        return 0, false
+    }
+    return cl.target_index(t, a.active, len(a.panes))
 }
 
 // The marked items, else the cursor item, one full path per line.
@@ -89,7 +150,7 @@ target_dir :: proc(a: ^App, args: string) -> (dir: string, ok: bool) {
             return "", false
         }
         i, has := cl.target_index(t, a.active, len(a.panes))
-        return has ? a.panes[i].dir : "", true
+        return has ? a.panes[i].dir : "", true // no pane there is ok: nothing to do
     }
     dir = abs_path(args, a.panes[a.active].dir)
     return dir, os.is_dir(dir)

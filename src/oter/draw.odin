@@ -9,6 +9,9 @@ import "../pane"
 
 // Each pane: a path row, then the list.
 list_rows :: proc(a: ^App) -> int {
+    if a.active >= len(a.frame.panes) {
+        return 1 // not drawn yet
+    }
     _, rows := region_cells(a, &a.frame.panes[a.active])
     return rows - 1
 }
