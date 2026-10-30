@@ -155,7 +155,8 @@ Decisions:
   dirs stay in view. It opens on its own when a step fails or waits for input (not at the
   prompt, no output for a moment); one key toggles it, Esc closes it. Otherwise it stays
   shut and the last output line goes to the status line. Not a pane in the strip.
-- `alt+;` enters the CL with `:` pretyped, for a builtin. Esc leaves it.
+- `alt+;` enters the CL with `:` pretyped, for a builtin; `alt+c` enters it empty, for a
+  shell line. Esc leaves it.
 - Copy and move never go through term0; they stay on the `fsop` worker.
 - term0 reuses oket's `pty`, with libvterm vendored (oket's build step and patch). oter sets
   `pty.wake_hook` to push an SDL event; no lues.

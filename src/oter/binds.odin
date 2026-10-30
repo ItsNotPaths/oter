@@ -18,6 +18,7 @@ SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
 DEFAULT_BINDS :: `[global]
 ctrl+q      = :quit
 alt+;       = :line :
+alt+c       = :line
 alt+up      = :drawer open
 alt+down    = :drawer close
 esc         = :drawer close
