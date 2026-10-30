@@ -73,6 +73,7 @@ is_finished :: proc(j: ^Job) -> bool {
 
 // Copies or moves each item in order. Stops at the first failure.
 send :: proc(j: ^Job) {
+    // (hole job-wake :tags files :sev blocker) nothing wakes the host loop when an item or the job ends.
     defer sync.atomic_store(&j.finished, true)
     line, found := pick(j.move ? MOVE_LINES[:] : COPY_LINES[:])
     if !found {

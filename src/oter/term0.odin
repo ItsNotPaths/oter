@@ -4,3 +4,8 @@ package oter
 term0_start :: proc(a: ^App) -> bool {
     return false
 }
+
+// (hole edit :tags term :sev gap :needs (drawer drawer-auto)) `:edit` does not open $EDITOR on the cursor item in term0.
+edit_cursor_item :: proc(a: ^App) -> bool {
+    return false
+}
