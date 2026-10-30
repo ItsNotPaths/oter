@@ -26,7 +26,7 @@ draw :: proc(a: ^App) {
     for &p, i in a.panes {
         draw_pane(a, &p, &f.panes[i], i == a.active && !a.in_sidebar)
     }
-    draw_drawer(a, &f.drawer)
+    draw_term(a, &f.drawer)
     draw_cl(a, &f.cl)
 
     gfx.gl_clear(w, h, gfx.theme_behind(a.theme, BEHIND))
@@ -50,15 +50,6 @@ draw_sidebar :: proc(a: ^App, r: ^Region) {
     gfx.grid_clear(g, th[.Fg], gfx.opaque(th[.Bg]))
     cols, _ := region_cells(a, r)
     header(g, cols, "places", a.in_sidebar, th)
-}
-
-// (hole drawer :tags (ui term) :sev gap :needs term0) drawer is an empty box; no terminal cells.
-draw_drawer :: proc(a: ^App, r: ^Region) {
-    th := a.theme
-    g := &r.grid
-    gfx.grid_clear(g, th[.Fg], gfx.opaque(th[.Bg]))
-    cols, _ := region_cells(a, r)
-    write_clipped(g, 0, 0, cols, a.drawer == .Full ? "term0 (full)" : "term0", th[.Dim], gfx.opaque(th[.Bg]), {})
 }
 
 draw_cl :: proc(a: ^App, r: ^Region) {

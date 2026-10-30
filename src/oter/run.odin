@@ -42,6 +42,8 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         a.running = false
     case "line":
         cl_open(a, args)
+    case "term":
+        term_enter(a)
     case "sidebar":
         a.in_sidebar = !a.in_sidebar
     case "drawer":
@@ -51,6 +53,9 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
                 a.drawer = .Open
             }
         case "close":
+            if a.in_term {
+                term_leave(a)
+            }
             if a.drawer == .Open { // full belongs to the TUI
                 a.drawer = .Closed
             }
@@ -185,7 +190,7 @@ feed_paths :: proc(feed, base: string) -> []string {
 run_shell :: proc(a: ^App, step: cl.Step) -> bool {
     feed, piped := cl.piped(&a.chain, step)
     if !piped && !step.feeds {
-        // (hole cl-shell :tags (input term) :sev gap :needs term0) a shell step on its own has no term0 to run in.
+        // (hole cl-shell :tags (input term) :sev gap) a shell step on its own has no term0 to run in.
         return fail(a, fmt.tprintf("%s: shell steps outside a pipe need term0", step.text))
     }
     // (hole filter-async :tags input :sev gap) a filter runs on the main thread; a slow one freezes the UI.

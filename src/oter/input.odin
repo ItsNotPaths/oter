@@ -8,12 +8,18 @@ handle :: proc(a: ^App, ev: sdl.Event) {
     case .QUIT:
         a.running = false
     case .KEY_DOWN:
-        if a.line.on {
+        if a.in_term {
+            term_key(a, ev.key)
+        } else if a.line.on {
             cl_key(a, ev.key.key)
         } else {
             bind_run(a, ev.key)
         }
     case .TEXT_INPUT:
-        cl_text(a, ev.text.text)
+        if a.in_term {
+            term_text(a, ev.text.text)
+        } else {
+            cl_text(a, ev.text.text)
+        }
     }
 }

@@ -7,6 +7,7 @@ import sdl "vendor:sdl3"
 import "oket:cl"
 import "oket:gfx"
 import "oket:input"
+import "oket:pty"
 import "../fsop"
 import "../pane"
 
@@ -26,6 +27,8 @@ App :: struct {
     line:    Cl,
     chain:   cl.Chain,
     binds:   [dynamic]input.Bind,
+    term0:   pty.Terminal,
+    in_term: bool, // keys go to term0; the drawer has taken the CL row
     status:  string, // owned; the CL bar's text until the next one replaces it
     status_err: bool,
     running: bool,
@@ -113,11 +116,13 @@ main :: proc() {
     }
 
     term0_start(&a)
+    defer pty.terminal_close(&a.term0)
 
     // Redraw only when something happened, or while something slides.
     last := time.tick_now()
     for a.running {
         jobs_poll(&a)
+        term0_pump(&a)
         moving := frame_step(&a, f32(time.duration_seconds(time.tick_lap_time(&last))))
         draw(&a)
         sdl.GL_SwapWindow(a.window)

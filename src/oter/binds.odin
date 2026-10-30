@@ -18,7 +18,7 @@ SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
 DEFAULT_BINDS :: `[global]
 ctrl+q      = :quit
 alt+;       = :line :
-alt+c       = :line
+alt+c       = :term
 alt+up      = :drawer open
 alt+down    = :drawer close
 esc         = :drawer close
@@ -171,14 +171,22 @@ key_layout_code :: proc(name: string) -> (input.Code, bool) {
         return 0, false
     }
     for sc in 1 ..< SCANCODE_COUNT {
-        key := u32(sdl.GetKeyFromScancode(sdl.Scancode(sc), sdl.KMOD_NONE, false))
-        if key <= ' ' || key == 0x7f || key >= u32(sdl.K_EXTENDED_MASK) {
-            continue
-        }
-        buf, n := utf8.encode_rune(rune(key))
-        if string(buf[:n]) == name {
+        if layout_name(input.Code(sc)) == name {
             return input.Code(sc), true
         }
     }
     return 0, false
+}
+
+// What a position types under the current layout, "" for keys that type nothing.
+layout_name :: proc(code: input.Code) -> string {
+    if code == 0 || int(code) >= SCANCODE_COUNT {
+        return ""
+    }
+    key := u32(sdl.GetKeyFromScancode(sdl.Scancode(code), sdl.KMOD_NONE, false))
+    if key <= ' ' || key == 0x7f || key >= u32(sdl.K_EXTENDED_MASK) {
+        return ""
+    }
+    buf, n := utf8.encode_rune(rune(key))
+    return fmt.tprint(string(buf[:n]))
 }
