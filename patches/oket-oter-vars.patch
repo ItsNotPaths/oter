@@ -1,0 +1,13 @@
+diff --git a/src/cl/vars.odin b/src/cl/vars.odin
+index 25ecd75..d1e2052 100644
+--- a/src/cl/vars.odin
++++ b/src/cl/vars.odin
+@@ -5,7 +5,7 @@ import "core:strings"
+ // The fields under point a line can name, as `$o_path` and so on. Fixed here: a plugin publishes
+ // a field under one of these names or a line cannot reach it. The prefix keeps clear of zsh's
+ // `$path`.
+-VARS :: [?]string{"path", "name", "link", "act"}
++VARS :: [?]string{"src", "dir", "dst"}
+ 
+ // One value per name, nil where nothing under point carries it.
+ Vars :: [len(VARS)]Maybe(string)

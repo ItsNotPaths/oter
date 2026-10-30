@@ -22,7 +22,7 @@ odin_install() {
 }
 
 echo "==> oket (gfx, font, cl, input, theme; built with -collection:oket=vendor/oket/src)"
-OKET_REV="a8d0e8f678b8c2e64e0e2d6ebda4c53bd5f9e0be"
+OKET_REV="95db0d31970c35dd65a49ed72b0e1b363aadbb77"
 OKET_SRC="$VENDOR/oket"
 if [ ! -d "$OKET_SRC/.git" ]; then
     rm -rf "$OKET_SRC"
@@ -30,9 +30,30 @@ if [ ! -d "$OKET_SRC/.git" ]; then
 fi
 if [ "$(git -C "$OKET_SRC" rev-parse HEAD)" != "$OKET_REV" ]; then
     git -C "$OKET_SRC" fetch -q origin
-    git -C "$OKET_SRC" checkout -q --detach "$OKET_REV"
+    git -C "$OKET_SRC" checkout -q -f --detach "$OKET_REV" # -f drops the old patches
 fi
 echo "  at $(git -C "$OKET_SRC" log --oneline -1)"
+for p in "$VENDOR"/../patches/oket-*.patch; do
+    [ -e "$p" ] || continue
+    git -C "$OKET_SRC" apply --reverse --check "$p" 2>/dev/null && continue # already applied
+    echo "  applying $(basename "$p")..."
+    git -C "$OKET_SRC" apply "$p"
+done
+
+echo ""
+echo "==> hatchzip (archives as folders; Rust, built with cargo)"
+# (hole hatchzip-ffi :tags deps :sev gap) source only; no hz_ C ABI crate or Odin binding yet.
+HATCHZIP_REV="50fa69c1e8b73f53d7b0cc592c303c66fd7ad8c5"
+HATCHZIP_SRC="$VENDOR/hatchzip"
+if [ ! -d "$HATCHZIP_SRC/.git" ]; then
+    rm -rf "$HATCHZIP_SRC"
+    git clone -q "https://github.com/xevrion/hatchzip.git" "$HATCHZIP_SRC"
+fi
+if [ "$(git -C "$HATCHZIP_SRC" rev-parse HEAD)" != "$HATCHZIP_REV" ]; then
+    git -C "$HATCHZIP_SRC" fetch -q origin
+    git -C "$HATCHZIP_SRC" checkout -q --detach "$HATCHZIP_REV"
+fi
+echo "  at $(git -C "$HATCHZIP_SRC" log --oneline -1)"
 
 echo ""
 echo "==> sdl3 (window, input, clipboard; static lib)"
@@ -111,6 +132,35 @@ else
             -Isrc src/harfbuzz.cc -o harfbuzz.o
         ar rcs libharfbuzz.a harfbuzz.o
         rm -f harfbuzz.o
+    )
+    echo "  done."
+fi
+
+echo ""
+echo "==> libvterm (oket's pty links it from vendor/oket/vendor/libvterm; static lib)"
+VTERM_REV="934bc2fbf21800ac3458a499df8820ca5fb45fd3"
+VTERM_SRC="$OKET_SRC/vendor/libvterm"
+VTERM_A="$VTERM_SRC/.libs/libvterm.a"
+if [ -f "$VTERM_A" ]; then
+    echo "  already present: libvterm.a"
+else
+    if [ ! -d "$VTERM_SRC/.git" ]; then
+        rm -rf "$VTERM_SRC"
+        git clone -q "https://github.com/neovim/libvterm.git" "$VTERM_SRC"
+    fi
+    git -C "$VTERM_SRC" checkout -q -f --detach "$VTERM_REV"
+    for p in "$OKET_SRC"/patches/libvterm-*.patch; do
+        [ -e "$p" ] || continue
+        echo "  applying $(basename "$p")..."
+        git -C "$VTERM_SRC" apply "$p"
+    done
+    echo "  building static libvterm.a..."
+    (
+        cd "$VTERM_SRC"
+        mkdir -p .libs
+        $CC -c -O2 -fPIC -Iinclude -Isrc src/*.c
+        ar rcs .libs/libvterm.a ./*.o
+        rm -f ./*.o
     )
     echo "  done."
 fi
