@@ -10,6 +10,7 @@ import "oket:input"
 
 SEC_GLOBAL :: input.Section(0)
 SEC_PANES :: input.Section(1)
+// (hole sidebar-keys :tags (ui input) :sev gap :needs places) the sidebar has no rows: no cursor, no enter.
 SEC_SIDEBAR :: input.Section(2) // empty by default, so it swallows the pane keys
 
 SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
