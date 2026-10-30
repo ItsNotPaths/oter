@@ -5,6 +5,7 @@ import "core:os"
 import "core:time"
 import sdl "vendor:sdl3"
 import "oket:gfx"
+import "../fsop"
 import "../pane"
 
 TITLE :: "oter"
@@ -22,6 +23,13 @@ App :: struct {
     status:  string, // owned; the CL bar's text until the next one replaces it
     status_err: bool,
     running: bool,
+}
+
+// Wakes `WaitEvent` from any thread; the redraw that follows reads the new state.
+push_wake :: proc() {
+    ev: sdl.Event
+    ev.type = .USER
+    _ = sdl.PushEvent(&ev) // thread-safe
 }
 
 gl_loader :: proc(p: rawptr, name: cstring) {
@@ -66,6 +74,8 @@ main :: proc() {
         fmt.eprintln("the built-in fallback atlas failed to parse")
         os.exit(1)
     }
+
+    fsop.wake_hook = push_wake
 
     a := App{window = window, theme = gfx.DEFAULT_THEME, running = true}
     if !gfx.painter_init(&a.painter, atlas) {

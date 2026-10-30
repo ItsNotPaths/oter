@@ -19,6 +19,9 @@ COPY_LINES := [?]string{
 @(rodata)
 MOVE_LINES := [?]string{"mv -T --update=none -- $o_src $o_dst"}
 
+// Wakes the host's loop from the worker when an item or the job ends. The host sets it once.
+wake_hook := proc() {}
+
 // One top-level source. A dir is one item for its whole tree.
 Item :: struct {
     src:  string,
@@ -73,7 +76,7 @@ is_finished :: proc(j: ^Job) -> bool {
 
 // Copies or moves each item in order. Stops at the first failure.
 send :: proc(j: ^Job) {
-    // (hole job-wake :tags files :sev blocker) nothing wakes the host loop when an item or the job ends.
+    defer wake_hook() // after `finished`: defers run last first
     defer sync.atomic_store(&j.finished, true)
     line, found := pick(j.move ? MOVE_LINES[:] : COPY_LINES[:])
     if !found {
@@ -93,6 +96,7 @@ send :: proc(j: ^Job) {
             j.done += 1
         }
         sync.atomic_store(&it.done, true)
+        wake_hook()
     }
 }
 

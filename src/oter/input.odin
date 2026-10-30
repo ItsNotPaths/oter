@@ -41,7 +41,7 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     case alt && k == sdl.K_RIGHT:
         a.active = min(a.active + 1, len(a.panes) - 1)
     case alt || ctrl || shift:
-        // (hole send-to-pane :tags (files input) :sev blocker :needs (ghost-rows job-wake)) shift/ctrl+arrows do nothing.
+        // (hole send-to-pane :tags (files input) :sev blocker :needs ghost-rows) shift/ctrl+arrows do nothing.
     case k == sdl.K_Y:
         pane.toggle_mark(p)
     case k == sdl.K_UP:

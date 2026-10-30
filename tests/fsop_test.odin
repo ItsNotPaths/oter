@@ -3,6 +3,8 @@ package tests
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
+import "core:sync"
+import "core:thread"
 import "core:time"
 import "oter:fsop"
 
@@ -150,4 +152,37 @@ or_in_a_line_is_plain_sh :: proc(t: ^testing.T) {
     _, ok := fsop.run_line("ls /oter-no-such-path 2>/dev/null || touch $o_dst", {"", dst, out})
     testing.expect(t, ok)
     testing.expect(t, os.exists(out))
+}
+
+@(private = "file")
+watched: ^fsop.Job
+@(private = "file")
+woke_finished: bool
+
+// The host redraws on a wake, so one must come after the job's final state is set.
+@(test)
+worker_wakes_the_host_once_finished :: proc(t: ^testing.T) {
+    root, src, dst := make_dirs(t)
+    defer {os.remove_all(root); delete(root)}
+
+    fsop.wake_hook = proc() {
+        if w := sync.atomic_load(&watched); w != nil && fsop.is_finished(w) {
+            sync.atomic_store(&woke_finished, true)
+        }
+    }
+    defer fsop.wake_hook = proc() {}
+    j := fsop.new_job({join(src, "a.txt")}, dst, false)
+    defer fsop.destroy(j)
+    sync.atomic_store(&watched, j)
+    thread_start(j)
+    deadline := time.tick_now()
+    for !sync.atomic_load(&woke_finished) && time.tick_since(deadline) < 5 * time.Second {
+        time.sleep(time.Millisecond)
+    }
+    testing.expect(t, sync.atomic_load(&woke_finished))
+}
+
+@(private = "file")
+thread_start :: proc(j: ^fsop.Job) {
+    thread.create_and_start_with_poly_data(j, fsop.send, self_cleanup = true)
 }
