@@ -1,6 +1,8 @@
 package oter
 
 import "core:fmt"
+import "core:strings"
+import "core:unicode/utf8"
 import sdl "vendor:sdl3"
 import "oket:gfx"
 import "../pane"
@@ -62,8 +64,17 @@ draw_cl :: proc(a: ^App, r: ^Region) {
     g := &r.grid
     gfx.grid_clear(g, th[.Fg], bar)
     cols, _ := region_cells(a, r)
-    // (hole cl-input :tags (ui input) :sev gap) CL row takes no typing.
-    write_clipped(g, 1, 0, cols - 1, a.status, a.status_err ? th[.Alert] : th[.Fg], bar, {})
+    if !a.line.on {
+        write_clipped(g, 1, 0, cols - 1, a.status, a.status_err ? th[.Alert] : th[.Fg], bar, {})
+        return
+    }
+    text := string(a.line.text[:])
+    write_clipped(g, 1, 0, cols - 1, text, th[.Fg], bar, {})
+    at := 1 + strings.rune_count(text[:a.line.cursor])
+    under := a.line.cursor < len(text) ? utf8.rune_at(text, a.line.cursor) : ' '
+    if at < cols {
+        gfx.grid_put(g, at, 0, gfx.Cell{under, th[.Fg], bar, {.Reverse}, 0})
+    }
 }
 
 draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {

@@ -1,5 +1,6 @@
 package oter
 
+import "core:fmt"
 import sdl "vendor:sdl3"
 import "../pane"
 
@@ -9,11 +10,17 @@ handle :: proc(a: ^App, ev: sdl.Event) {
     case .QUIT:
         a.running = false
     case .KEY_DOWN:
-        key(a, ev.key.key, ev.key.mod)
+        if a.line.on {
+            cl_key(a, ev.key.key)
+        } else {
+            key(a, ev.key.key, ev.key.mod)
+        }
+    case .TEXT_INPUT:
+        cl_text(a, ev.text.text)
     }
 }
 
-// (hole binds :tags input :sev gap :needs cl-input) keys are hard-coded, not CL strings from binds.conf.
+// (hole binds :tags input :sev gap) keys are hard-coded, not CL strings from binds.conf.
 key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     alt := mod & sdl.KMOD_ALT != {}
     shift := mod & sdl.KMOD_SHIFT != {}
@@ -24,6 +31,8 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     switch {
     case ctrl && k == sdl.K_Q:
         a.running = false
+    case alt && k == sdl.K_SEMICOLON:
+        cl_open(a, ":")
     case alt && k == sdl.K_UP && a.drawer == .Closed: // only a TUI makes it full
         a.drawer = .Open
     case (alt && k == sdl.K_DOWN || k == sdl.K_ESCAPE) && a.drawer == .Open: // full belongs to the TUI
@@ -41,7 +50,7 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     case alt && k == sdl.K_RIGHT:
         a.active = min(a.active + 1, len(a.panes) - 1)
     case (shift || ctrl) && (k == sdl.K_LEFT || k == sdl.K_RIGHT):
-        send_to_pane(a, k == sdl.K_LEFT ? -1 : +1, move = ctrl)
+        run_line(a, fmt.tprintf(":sel | :%s @%s1", ctrl ? "move" : "copy", k == sdl.K_LEFT ? "-" : "+"))
     case alt || ctrl || shift:
     case k == sdl.K_Y:
         pane.toggle_mark(p)
@@ -62,26 +71,6 @@ key :: proc(a: ^App, k: sdl.Keycode, mod: sdl.Keymod) {
     case k == sdl.K_BACKSPACE || k == sdl.K_LEFT:
         pane.up(p)
     }
-}
-
-// Sends the active pane's selection to the pane `dir` slots over. With one pane it does nothing.
-send_to_pane :: proc(a: ^App, dir: int, move: bool) {
-    to := a.active + dir
-    if to < 0 || to >= len(a.panes) {
-        return
-    }
-    from := &a.panes[a.active]
-    dst := a.panes[to].dir
-    if dst == from.dir {
-        status_set(a, "same dir on both sides", true)
-        return
-    }
-    srcs := pane.selection(from)
-    if len(srcs) == 0 {
-        return
-    }
-    send_start(a, srcs, from.dir, dst, move)
-    pane.clear_marks(from)
 }
 
 // Moves the active pane one slot left or right; focus follows it.
