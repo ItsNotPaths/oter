@@ -62,9 +62,8 @@ draw_cl :: proc(a: ^App, r: ^Region) {
     g := &r.grid
     gfx.grid_clear(g, th[.Fg], bar)
     cols, _ := region_cells(a, r)
-    // (hole status-line :tags ui :sev blocker) CL row is a bare ":"; no result or error text.
-    // (hole cl-input :tags (ui input) :sev gap :needs status-line) CL row takes no typing.
-    write_clipped(g, 0, 0, cols, ":", th[.Fg], bar, {})
+    // (hole cl-input :tags (ui input) :sev gap) CL row takes no typing.
+    write_clipped(g, 1, 0, cols - 1, a.status, a.status_err ? th[.Alert] : th[.Fg], bar, {})
 }
 
 draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
