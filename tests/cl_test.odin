@@ -82,6 +82,28 @@ a_target_with_no_pane_does_nothing :: proc(t: ^testing.T) {
 }
 
 @(test)
+a_failing_filter_stops_the_chain :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+
+    oter.run_line(&a, ":sel | false | :copy @+1")
+    testing.expect_value(t, len(a.sends), 0)
+    testing.expect(t, a.status_err)
+}
+
+@(test)
+a_copy_into_its_own_dir_is_refused :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+
+    oter.run_line(&a, ":copy .")
+    testing.expect_value(t, len(a.sends), 0)
+    testing.expect(t, a.status_err)
+}
+
+@(test)
 an_unknown_builtin_reports :: proc(t: ^testing.T) {
     a: oter.App
     root := two_panes(t, &a)
