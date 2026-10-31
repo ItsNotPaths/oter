@@ -28,8 +28,13 @@ RUN mkdir -p /opt/odin \
     && curl -fsSL "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" \
         | tar xz --strip-components=1 -C /opt/odin
 
-ENV PATH="/opt/odin:${PATH}"
-# (hole release-rust :tags deps :sev gap) no cargo here, so build.sh fails at the hz crate.
+# cargo builds the hz crate (hatchzip); hatchzip needs at least 1.93.
+ARG RUST_VERSION=1.99.1
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
+RUN curl -fsSL https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}"
+
+ENV PATH="/opt/odin:/opt/cargo/bin:${PATH}"
 # /work is a host mount; git refuses vendor/ clones in it without this.
 RUN git config --global --add safe.directory '*'
 WORKDIR /work
