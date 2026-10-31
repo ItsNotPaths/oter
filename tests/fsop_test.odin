@@ -161,7 +161,8 @@ or_in_a_line_is_plain_sh :: proc(t: ^testing.T) {
     defer {os.remove_all(root); delete(root)}
     out := join(dst, "out")
 
-    _, ok := fsop.run_line("ls /oter-no-such-path 2>/dev/null || touch $o_dst", {"", dst, out, ""})
+    pct: int
+    _, ok := fsop.run_line("ls /oter-no-such-path 2>/dev/null || touch $o_dst", {"", dst, out, ""}, &pct)
     testing.expect(t, ok)
     testing.expect(t, os.exists(out))
 }
@@ -199,4 +200,20 @@ worker_wakes_the_host_once_finished :: proc(t: ^testing.T) {
 @(private = "file")
 thread_start :: proc(j: ^fsop.Job) {
     thread.create_and_start_with_poly_data(j, fsop.send, self_cleanup = true)
+}
+
+// A copy line that prints `NN%` (rsync's progress2) reports it on the item, so its ghost row fills.
+@(test)
+progress_on_stdout_reaches_the_item :: proc(t: ^testing.T) {
+    root, src, dst := make_dirs(t)
+    defer {os.remove_all(root); delete(root)}
+
+    lines := []string{"printf '  1,024  37%%  1.00MB/s  0:00:01\\r' && cp -- $o_src $o_dst"}
+    j := fsop.new_job({join(src, "a.txt")}, dst, false, lines)
+    defer fsop.destroy(j)
+    fsop.send(j)
+
+    testing.expect_value(t, j.err, "")
+    testing.expect_value(t, read(join(dst, "a.txt")), "hello")
+    testing.expect_value(t, sync.atomic_load(&j.items[0].pct), 37)
 }

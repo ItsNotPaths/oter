@@ -117,12 +117,24 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
     }
     // Items still in flight to this dir, greyed under the list.
     row := len(p.entries) - p.top
-    for name in ghosts(a, p.dir) {
+    bar := gfx.opaque(gfx.shade(th[.Dim], 50))
+    for gh in ghosts(a, p.dir) {
         if row >= rows {
             break
         }
         if row >= 0 {
-            write_clipped(g, 1, row + 1, cols - 1, name, th[.Dim], bg, {})
+            filled := 1 + (cols - 1) * gh.pct / 100 // the row fills by bytes as it lands
+            col := 1
+            for r in gh.name {
+                if col >= cols {
+                    break
+                }
+                gfx.grid_put(g, col, row + 1, gfx.Cell{r, th[.Dim], col < filled ? bar : bg, {}, 0})
+                col += 1
+            }
+            for ; col < filled; col += 1 {
+                gfx.grid_put(g, col, row + 1, gfx.Cell{' ', th[.Dim], bar, {}, 0})
+            }
         }
         row += 1
     }

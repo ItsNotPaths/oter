@@ -45,16 +45,21 @@ jobs_poll :: proc(a: ^App) {
     }
 }
 
+Ghost :: struct {
+    name: string,
+    pct:  int,
+}
+
 // The items of running sends into `dir` that have not landed yet.
-ghosts :: proc(a: ^App, dir: string, alloc := context.temp_allocator) -> []string {
-    out := make([dynamic]string, alloc)
+ghosts :: proc(a: ^App, dir: string, alloc := context.temp_allocator) -> []Ghost {
+    out := make([dynamic]Ghost, alloc)
     for &s in a.sends {
         if s.job.dst_dir != dir || fsop.is_finished(s.job) {
             continue
         }
         for &it in s.job.items {
             if !sync.atomic_load(&it.done) {
-                append(&out, it.name)
+                append(&out, Ghost{it.name, sync.atomic_load(&it.pct)})
             }
         }
     }
