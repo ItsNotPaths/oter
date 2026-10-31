@@ -161,17 +161,13 @@ main :: proc() {
         free_all(context.temp_allocator)
 
         ev: sdl.Event
-        if moving {
-            if !sdl.WaitEventTimeout(&ev, 8) {
-                continue
-            }
-        } else {
+        if !moving { // while something slides the swap paces the frames, as in oket
             if !sdl.WaitEvent(&ev) {
                 continue
             }
             last = time.tick_now() // the wait is not motion time
+            handle(&a, ev)
         }
-        handle(&a, ev)
         for sdl.PollEvent(&ev) {
             handle(&a, ev)
         }
