@@ -82,7 +82,6 @@ var :: proc(name: string) -> int {
     return i
 }
 
-@(private = "file")
 fail :: proc(a: ^App, msg: string) -> bool {
     status_set(a, msg, true)
     return false
@@ -161,6 +160,12 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "unmark":
         _, dir := cl.first_arg(args)
         pane.unmark(p, dir)
+    case "font.bigger":
+        return font_zoom(a, +1)
+    case "font.smaller":
+        return font_zoom(a, -1)
+    case "font.reset":
+        return font_reset(a)
     case "np":
         np: pane.Pane
         pane.open(&np, p.dir)

@@ -20,6 +20,9 @@ alt+up      = :drawer open
 alt+down    = :drawer close
 alt+p       = :np
 alt+q       = :close
+ctrl+@AE12  = :font.bigger
+ctrl+-      = :font.smaller
+ctrl+0      = :font.reset
 tab         = :sidebar
 
 [panes]

@@ -26,6 +26,8 @@ Mode :: enum {
 App :: struct {
     window:  ^sdl.Window,
     painter: gfx.Painter,
+    font_px:     int, // baked now
+    font_system: int, // what the display asked for; :font.reset goes back to it
     frame:   Frame,
     theme:   gfx.Theme,
     home:    Home,
@@ -101,7 +103,7 @@ main :: proc() {
     if sx <= 0 {
         sx = 1
     }
-    faces, _ := gfx.face_stack_load(sx)
+    faces, font_px := gfx.face_stack_load(sx)
     atlas, atlas_ok := gfx.atlas_make(faces)
     if !atlas_ok {
         fmt.eprintln("the built-in fallback atlas failed to parse")
@@ -115,6 +117,7 @@ main :: proc() {
         os.exit(1)
     }
     defer gfx.painter_destroy(&a.painter)
+    font_init(&a, font_px)
     gfx.painter_set_scale(&a.painter, len(faces) > 0 ? 1 : sx)
     defer frame_destroy(&a.frame)
     defer delete(a.status)
