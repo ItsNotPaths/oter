@@ -9,11 +9,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
-use hatchzip_core::archive::{self, Item, Kind, PasswordNeeded, Sink, storage::Storage};
+use hatchzip_core::archive::{self, Item, Kind, PasswordNeeded, Sink, WrongPassword, storage::Storage};
 
 pub const HZ_OK: c_int = 0;
-pub const HZ_NOT_ARCHIVE: c_int = 1;
+pub const HZ_FAILED: c_int = 1; // for a listing: not an archive
 pub const HZ_PASSWORD: c_int = 2;
+pub const HZ_WRONG_PASSWORD: c_int = 3;
 
 pub const HZ_PROGRESS: c_int = 0;
 pub const HZ_DONE: c_int = 1;
@@ -38,17 +39,31 @@ unsafe fn path<'a>(p: *const c_char) -> &'a Path {
     Path::new(OsStr::from_bytes(unsafe { CStr::from_ptr(p) }.to_bytes()))
 }
 
-fn open(path: &Path) -> Result<archive::Opened> {
-    archive::open(&Arc::new(Storage::open(path, false)?), None, None)
+/// "" is no password.
+unsafe fn password<'a>(p: *const c_char) -> Option<&'a str> {
+    unsafe { CStr::from_ptr(p) }.to_str().ok().filter(|s| !s.is_empty())
+}
+
+fn open(path: &Path, password: Option<&str>) -> Result<archive::Opened> {
+    archive::open(&Arc::new(Storage::open(path, false)?), None, password)
+}
+
+fn code(e: &anyhow::Error) -> c_int {
+    if e.chain().any(|c| c.is::<PasswordNeeded>()) {
+        HZ_PASSWORD
+    } else if e.chain().any(|c| c.is::<WrongPassword>()) {
+        HZ_WRONG_PASSWORD
+    } else {
+        HZ_FAILED
+    }
 }
 
 /// Lists the archive at `path` into `out`, which `hz_free` releases. Read-only.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn hz_list(path: *const c_char, out: *mut HzList) -> c_int {
-    let opened = match open(unsafe { self::path(path) }) {
+pub unsafe extern "C" fn hz_list(path: *const c_char, password: *const c_char, out: *mut HzList) -> c_int {
+    let opened = match open(unsafe { self::path(path) }, unsafe { self::password(password) }) {
         Ok(o) => o,
-        Err(e) if e.chain().any(|c| c.is::<PasswordNeeded>()) => return HZ_PASSWORD,
-        Err(_) => return HZ_NOT_ARCHIVE,
+        Err(e) => return code(&e),
     };
     let mut items: Vec<HzItem> = opened
         .units
@@ -84,21 +99,27 @@ pub unsafe extern "C" fn hz_free(list: *mut HzList) {
 }
 
 /// Extracts each `picks[i]`, a file or a dir's whole tree, to `dst_dir/<its base name>`.
-/// One already there is skipped. Returns null, or an error for `hz_free_str`.
+/// One already there is skipped. On failure `err` gets a message for `hz_free_str`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn hz_extract(
     archive: *const c_char,
+    password: *const c_char,
     picks: *const *const c_char,
     n: usize,
     dst_dir: *const c_char,
     report: Report,
     ctx: *mut c_void,
-) -> *mut c_char {
+    err: *mut *mut c_char,
+) -> c_int {
     let picks: Vec<&Path> = (0..n).map(|i| unsafe { path(*picks.add(i)) }).collect();
     let mut report = |i, pct, state| report(ctx, i, pct, state);
-    match extract(unsafe { path(archive) }, &picks, unsafe { path(dst_dir) }, &mut report) {
-        Ok(()) => std::ptr::null_mut(),
-        Err(e) => CString::new(format!("{e:#}")).unwrap_or_default().into_raw(),
+    let (archive, password) = unsafe { (path(archive), self::password(password)) };
+    match extract(archive, password, &picks, unsafe { path(dst_dir) }, &mut report) {
+        Ok(()) => HZ_OK,
+        Err(e) => {
+            unsafe { *err = CString::new(format!("{e:#}")).unwrap_or_default().into_raw() };
+            code(&e)
+        }
     }
 }
 
@@ -187,8 +208,14 @@ impl Sink for Extract<'_, '_> {
     }
 }
 
-fn extract(archive: &Path, picks: &[&Path], dst: &Path, report: &mut dyn FnMut(usize, u8, c_int)) -> Result<()> {
-    let opened = open(archive)?;
+fn extract(
+    archive: &Path,
+    password: Option<&str>,
+    picks: &[&Path],
+    dst: &Path,
+    report: &mut dyn FnMut(usize, u8, c_int),
+) -> Result<()> {
+    let opened = open(archive, password)?;
     let mut x = Extract {
         picks: picks
             .iter()

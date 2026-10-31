@@ -11,9 +11,13 @@ import "oket:pty"
 import "../pane"
 
 // Names the exit report once, so a step carries `;__oter <id> $?` and not the escape.
+// `__oter_ask <id> <prompt>` reads a line, echo off, into the report's text; ^C reports 130.
 // Doubled braces: this goes through fmt.
 @(private = "file")
-SETUP :: " export GIT_PAGER=cat PAGER=cat; __oter(){{ printf '\\033]%d;%%s;%%s\\007' \"$1\" \"$2\"; }}\n"
+SETUP ::
+    " export GIT_PAGER=cat PAGER=cat; __oter(){{ printf '\\033]%d;%%s;%%s;%%s\\007' \"$1\" \"$2\" \"$3\"; }};" +
+    " __oter_ask(){{ ( stty -echo; trap 'stty echo; echo; __oter \"$1\" 130; exit 130' INT; printf '%%s' \"$2\";" +
+    " IFS= read -r p; s=$?; stty echo; echo; __oter \"$1\" \"$s\" \"$p\" ); }}\n"
 
 // The hidden shell, started in the focused pane's dir. `a.term0` must not move once spawned.
 term0_start :: proc(a: ^App) -> bool {
@@ -42,6 +46,21 @@ term0_run :: proc(a: ^App, cmd: string) -> bool {
     return true
 }
 
+// Asks `prompt` in the tray; the answer is the report for `a.step_id`. False if the shell is busy.
+term0_ask :: proc(a: ^App, prompt: string) -> bool {
+    if !term0_ensure(a) || !pty.terminal_at_prompt(&a.term0) {
+        return false
+    }
+    t := &a.term0
+    a.step_id += 1
+    t.exit_ready = false
+    line := fmt.tprintf(" __oter_ask %d %s\n", a.step_id, cl.sh_quote(prompt, context.temp_allocator))
+    pty.terminal_write(t, transmute([]u8)line)
+    a.drawer = .Open
+    mode_set(a, .Term)
+    return true
+}
+
 // A dead shell is replaced by a fresh one.
 @(private = "file")
 term0_ensure :: proc(a: ^App) -> bool {
@@ -59,7 +78,7 @@ term0_ensure :: proc(a: ^App) -> bool {
 pane_follow_shell :: proc(a: ^App) -> bool {
     p := &a.panes[a.active]
     dir := pty.terminal_cwd(&a.term0)
-    if dir == "" || dir == p.dir {
+    if dir == "" || dir == p.dir || !pane.is_real(p) {
         return false
     }
     pane.open(p, dir)
@@ -75,6 +94,7 @@ term0_pump :: proc(a: ^App) {
             status_set(a, "term0's shell exited mid-step", true)
             cl.reset(&a.chain)
         }
+        ask_drop(a)
         if a.mode == .Term {
             mode_set(a, .Panes)
         }
@@ -90,11 +110,18 @@ term0_pump :: proc(a: ^App) {
     }
 
     // Sized as the tray shows it even while shut, so output wraps where you will read it.
-    cw, ch := gfx.painter_cell(&a.painter)
-    if rows := int(drawer_height(a, a.drawer == .Full ? .Full : .Open)) / ch; rows > 0 && a.frame.win.x > 0 {
-        pty.terminal_resize(t, rows, int(a.frame.win.x) / cw)
+    if cw, ch := gfx.painter_cell(&a.painter); ch > 0 && a.frame.win.x > 0 { // no window yet: nothing to fit
+        if rows := int(drawer_height(a, a.drawer == .Full ? .Full : .Open)) / ch; rows > 0 {
+            pty.terminal_resize(t, rows, int(a.frame.win.x) / cw)
+        }
     }
 
+    if ask, asking := a.ask.?; asking && t.exit_ready && t.exit_id == ask.id {
+        t.exit_ready = false
+        a.ask = nil
+        ask_answered(a, ask, t.exit_code == 0, pty.terminal_exit_text(t))
+        return
+    }
     if !a.chain.waiting || !t.exit_ready || t.exit_id != a.step_id {
         return
     }
@@ -142,11 +169,15 @@ tray_down :: proc(a: ^App) {
     }
     a.drawer = .Closed
     mode_set(a, .Panes)
+    if a.ask != nil {
+        pty.terminal_write(&a.term0, transmute([]u8)string("\n")) // an empty answer ends the read
+        ask_drop(a)
+        return
+    }
     pane_follow_shell(a)
 }
 
 // The last non-blank row between the step's echoed line and the prompt now under the cursor.
-// (hole multiline-prompt :tags term :sev polish) a two-line prompt's first line is taken for output.
 @(private = "file")
 last_output_line :: proc(a: ^App) -> string {
     t := &a.term0

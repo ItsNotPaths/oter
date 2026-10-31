@@ -18,6 +18,7 @@ Listing :: struct {
     dir:      string, // where in it the pane lands
     from:     string,
     pane:     int,
+    password: string,
     items:    []hz.Item,
     err:      hz.Error,
     finished: bool, // atomic; the fields above are final once set
@@ -44,6 +45,7 @@ archive_open :: proc(a: ^App, i: int, path: string) -> bool {
     }
     l := new(Listing)
     l^ = {file = strings.clone(file), dir = strings.clone(path), from = strings.clone(a.panes[i].dir), pane = i}
+    l.password = strings.clone(a.passwords[file])
     append(&a.listings, l)
     status_set(a, fmt.tprintf("opening %s…", filepath.base(file)))
     ctx := runtime.default_context() // own temp allocator; the main loop frees its own each frame
@@ -56,7 +58,7 @@ archive_open :: proc(a: ^App, i: int, path: string) -> bool {
 listing_work :: proc(l: ^Listing) {
     defer fsop.wake_hook() // after `finished`: defers run last first
     defer sync.atomic_store(&l.finished, true)
-    l.items, l.err = hz.list(l.file)
+    l.items, l.err = hz.list(l.file, l.password)
     free_all(context.temp_allocator)
 }
 
@@ -71,6 +73,7 @@ archives_poll :: proc(a: ^App) {
         delete(l.file)
         delete(l.dir)
         delete(l.from)
+        delete(l.password)
         free(l)
     }
 }
@@ -79,15 +82,17 @@ archives_poll :: proc(a: ^App) {
 listing_land :: proc(a: ^App, l: ^Listing) {
     name := filepath.base(l.file)
     switch l.err {
-    case .Not_Archive:
+    case .Failed:
         if l.dir == l.file {
             status_set(a, "") // enter on a plain file: nothing to say
         } else {
             fail(a, fmt.tprintf("%s is not an archive", name))
         }
     case .Password:
-        // (hole archive-password :tags files :sev gap) no prompt; a 7z with locked headers only says so.
-        fail(a, fmt.tprintf("%s needs a password", name))
+        ask_password(a, l.file, Retry_Open{l.pane, strings.clone(l.dir), strings.clone(l.from)})
+    case .Wrong_Password:
+        password_forget(a, l.file)
+        fail(a, fmt.tprintf("wrong password for %s", name))
     case .None:
         if l.pane < len(a.panes) && a.panes[l.pane].dir == l.from {
             pane.open_archive(&a.panes[l.pane], l.file, hz.clone_items(l.items), l.dir)
@@ -135,6 +140,97 @@ cached_free :: proc(c: Cached) {
     hz.delete_items(c.items)
 }
 
+// What a password unlocks once given: the open or the copy that needed it. Owned.
+Retry :: union {
+    Retry_Open,
+    Retry_Copy,
+}
+
+Retry_Open :: struct {
+    pane:       int,
+    path, from: string, // pane `pane`, still showing `from`, goes to `path`
+}
+
+Retry_Copy :: struct {
+    srcs:             []string,
+    src_dir, dst_dir: string,
+}
+
+// A question in the tray. `id` is the term0 report that answers it.
+Ask :: struct {
+    id:    u64,
+    file:  string, // owned
+    retry: Retry,
+}
+
+// Takes `retry`. One question at a time, and only to a shell at its prompt.
+ask_password :: proc(a: ^App, file: string, retry: Retry) {
+    name := filepath.base(file)
+    if a.ask != nil || a.chain.waiting || !term0_ask(a, fmt.tprintf("password for %s: ", name)) {
+        retry_free(retry)
+        fail(a, fmt.tprintf("%s needs a password, and the shell is busy", name))
+        return
+    }
+    status_set(a, "")
+    a.ask = Ask{a.step_id, strings.clone(file), retry}
+}
+
+// The tray closes. An answer is kept for the file and the retry runs; ^C or Esc ran nothing.
+ask_answered :: proc(a: ^App, ask: Ask, answered: bool, password: string) {
+    defer ask_free(ask)
+    a.drawer = .Closed
+    mode_set(a, .Panes)
+    if !answered || password == "" {
+        return
+    }
+    password_forget(a, ask.file)
+    a.passwords[strings.clone(ask.file)] = strings.clone(password)
+    switch r in ask.retry {
+    case Retry_Open:
+        if r.pane < len(a.panes) && a.panes[r.pane].dir == r.from {
+            archive_open(a, r.pane, r.path)
+        }
+    case Retry_Copy:
+        send_start(a, r.srcs, r.src_dir, r.dst_dir, false, ask.file)
+    }
+}
+
+// The shell died under the question.
+ask_drop :: proc(a: ^App) {
+    if ask, asking := a.ask.?; asking {
+        ask_free(ask)
+        a.ask = nil
+    }
+}
+
+password_forget :: proc(a: ^App, file: string) {
+    key, value := delete_key(&a.passwords, file) // zero strings if it had none
+    delete(key)
+    delete(value)
+}
+
+@(private = "file")
+ask_free :: proc(ask: Ask) {
+    delete(ask.file)
+    retry_free(ask.retry)
+}
+
+@(private = "file")
+retry_free :: proc(r: Retry) {
+    switch r in r {
+    case Retry_Open:
+        delete(r.path)
+        delete(r.from)
+    case Retry_Copy:
+        for s in r.srcs {
+            delete(s)
+        }
+        delete(r.srcs)
+        delete(r.src_dir)
+        delete(r.dst_dir)
+    }
+}
+
 // A listing still running at quit is left to the OS, as a send is.
 archives_destroy :: proc(a: ^App) {
     for c in a.archives {
@@ -142,4 +238,10 @@ archives_destroy :: proc(a: ^App) {
     }
     delete(a.archives)
     delete(a.listings)
+    for key, value in a.passwords {
+        delete(key)
+        delete(value)
+    }
+    delete(a.passwords)
+    ask_drop(a)
 }

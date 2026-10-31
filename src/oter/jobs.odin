@@ -17,7 +17,8 @@ Send :: struct {
 
 send_start :: proc(a: ^App, srcs: []string, src_dir, dst_dir: string, move: bool, archive := "") {
     lines := move ? a.config.move[:] : a.config.copy[:]
-    append(&a.sends, Send{fsop.start(srcs, dst_dir, move, lines, archive), strings.clone(src_dir), 0})
+    job := fsop.start(srcs, dst_dir, move, lines, archive, a.passwords[archive])
+    append(&a.sends, Send{job, strings.clone(src_dir), 0})
 }
 
 // Each frame: re-list the panes an item landed in; finish what the worker finished.
@@ -41,10 +42,29 @@ jobs_poll :: proc(a: ^App) {
         if !finished {
             continue
         }
-        status_set(a, send_result(j), j.err != "")
+        send_end(a, &s)
         fsop.destroy(j)
         delete(s.src_dir)
         ordered_remove(&a.sends, i)
+    }
+}
+
+// The result in the status line, or the password question a locked archive raises.
+@(private = "file")
+send_end :: proc(a: ^App, s: ^Send) {
+    j := s.job
+    switch j.locked {
+    case .Password:
+        srcs := make([]string, len(j.items))
+        for it, i in j.items {
+            srcs[i] = strings.clone(it.src)
+        }
+        ask_password(a, j.archive, Retry_Copy{srcs, strings.clone(s.src_dir), strings.clone(j.dst_dir)})
+    case .Wrong_Password:
+        password_forget(a, j.archive)
+        fail(a, fmt.tprintf("wrong password for %s", filepath.base(j.archive)))
+    case .None, .Failed:
+        status_set(a, send_result(j), j.err != "")
     }
 }
 

@@ -26,21 +26,24 @@ Item :: struct {
 Job :: struct {
     dst_dir:  string,
     archive:  string, // set: every item is inside this archive, and is extracted
+    password: string, // the archive's; "" is none
     move:     bool,
     lines:    []string, // the host's; sh lines, best first, the first whose program is installed runs
     items:    []Item,
     done:     int,
     skipped:  int,    // name clash in dst_dir; never overwrites
     err:      string, // stderr of the item that stopped the job
+    locked:   hz.Error, // .Password or .Wrong_Password when that is what stopped it
     finished: bool,   // atomic; the fields above are final once set
 }
 
 // `lines` must outlive the job. In them `$o_src` is the item, `$o_dir` the target dir,
 // `$o_dst` the item's path in it.
-new_job :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string, archive := "") -> ^Job {
+new_job :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string, archive := "", password := "") -> ^Job {
     j := new(Job)
     j.dst_dir = strings.clone(dst_dir)
     j.archive = strings.clone(archive)
+    j.password = strings.clone(password)
     j.move = move
     j.lines = lines
     j.items = make([]Item, len(srcs))
@@ -58,13 +61,14 @@ destroy :: proc(j: ^Job) {
     delete(j.items)
     delete(j.dst_dir)
     delete(j.archive)
+    delete(j.password)
     delete(j.err)
     free(j)
 }
 
 // Runs `send` on a worker thread. Free with `destroy` once `is_finished`.
-start :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string, archive := "") -> ^Job {
-    j := new_job(srcs, dst_dir, move, lines, archive)
+start :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string, archive := "", password := "") -> ^Job {
+    j := new_job(srcs, dst_dir, move, lines, archive, password)
     ctx := runtime.default_context() // own temp allocator; the main loop frees its own each frame
     ctx.allocator = context.allocator
     thread.create_and_start_with_poly_data(j, send, ctx, self_cleanup = true)
@@ -116,8 +120,12 @@ extract :: proc(j: ^Job) {
     for it, i in j.items {
         picks[i] = strings.trim_prefix(it.src[len(j.archive):], "/")
     }
-    if err := hz.extract(j.archive, picks, j.dst_dir, report, j); err != "" {
-        j.err = strings.clone(err)
+    err, msg := hz.extract(j.archive, j.password, picks, j.dst_dir, report, j)
+    if err != .None {
+        j.err = strings.clone(msg)
+    }
+    if err == .Password || err == .Wrong_Password {
+        j.locked = err
     }
 }
 

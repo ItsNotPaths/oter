@@ -14,6 +14,10 @@ run_line :: proc(a: ^App, line: string) {
         status_set(a, "a step is still running", true)
         return
     }
+    if a.ask != nil {
+        status_set(a, "the tray is asking for a password", true)
+        return
+    }
     cl.parse(ch, line, a, proc(a: ^App, name: string) -> string {return ""}, proc(a: ^App, name: string) -> bool {
         return name == "stage" // `:stage <text>` takes the rest raw, operators and all
     })

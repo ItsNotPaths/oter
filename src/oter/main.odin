@@ -42,6 +42,8 @@ App :: struct {
     sends:   [dynamic]Send,
     listings: [dynamic]^Listing, // archives being listed
     archives: [dynamic]Cached, // listed ones, oldest first
+    passwords: map[string]string, // archive file -> its password; memory only
+    ask:     Maybe(Ask), // the password question the tray is showing
     filter:  ^Filter, // the piped step the chain waits on
     line:    Cl,
     chain:   cl.Chain,
