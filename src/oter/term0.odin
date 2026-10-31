@@ -111,7 +111,14 @@ term0_pump :: proc(a: ^App) {
 
 // The tray up is the terminal: half-typed CL text goes to its prompt, in the pane's dir.
 tray_up :: proc(a: ^App) {
-    if (a.mode != .Panes && a.mode != .Line) || !term0_ensure(a) {
+    if a.mode != .Panes && a.mode != .Line {
+        return
+    }
+    if !pane.is_real(&a.panes[a.active]) {
+        status_set(a, NO_SHELL, true)
+        return
+    }
+    if !term0_ensure(a) {
         return
     }
     t := &a.term0

@@ -50,7 +50,8 @@ going_up_selects_the_dir_we_left :: proc(t: ^testing.T) {
     defer pane.destroy(&p)
     pane.open(&p, root)
     p.cursor = 1 // zeta
-    testing.expect(t, pane.enter(&p))
+    entered, _ := pane.enter(&p)
+    testing.expect(t, entered)
     pane.up(&p)
 
     e, ok := pane.current(&p)
@@ -67,7 +68,8 @@ enter_on_a_file_does_nothing :: proc(t: ^testing.T) {
     defer pane.destroy(&p)
     pane.open(&p, root)
     p.cursor = 2 // A.txt
-    testing.expect(t, !pane.enter(&p))
+    entered, _ := pane.enter(&p)
+    testing.expect(t, !entered)
     testing.expect_value(t, p.dir, root)
 }
 

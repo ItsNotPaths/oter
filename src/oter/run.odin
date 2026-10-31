@@ -62,6 +62,10 @@ chain_pump :: proc(a: ^App) {
             cl.done(ch, run_builtin(a, filled_step))
             continue
         }
+        if !pane.is_real(&a.panes[a.active]) {
+            cl.done(ch, fail(a, NO_SHELL))
+            continue
+        }
         if _, piped := cl.piped(ch, step); piped || step.feeds {
             filter_start(a, step, cmd)
             return
@@ -74,6 +78,8 @@ chain_pump :: proc(a: ^App) {
         return
     }
 }
+
+NO_SHELL :: "can't run shell inside an archive"
 
 @(private = "file")
 var :: proc(name: string) -> int {
@@ -146,7 +152,9 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "bottom":
         pane.move(p, +len(p.entries))
     case "enter":
-        pane.enter(p)
+        if _, err := pane.enter(p); err != "" {
+            return fail(a, err)
+        }
     case "parent":
         pane.up(p)
     case "mark":
@@ -167,8 +175,12 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "font.reset":
         return font_reset(a)
     case "np":
+        dir := p.dir
+        if s, ok := p.src.(pane.Archive); ok {
+            dir = filepath.dir(s.file) // a new pane starts real
+        }
         np: pane.Pane
-        pane.open(&np, p.dir)
+        pane.open(&np, dir)
         a.active += 1
         inject_at(&a.panes, a.active, np)
         frame_pane_insert(&a.frame, a.active)
@@ -233,6 +245,9 @@ builtin_send :: proc(a: ^App, step: cl.Step, args: string, move: bool) -> bool {
     if dst == "" {
         return true // no pane there: nothing to do
     }
+    if i, is_pane := pane_target(a, args); is_pane && !pane.is_real(&a.panes[i]) {
+        return fail(a, "can't copy into an archive")
+    }
     from := &a.panes[a.active]
     srcs: []string
     if feed, piped := cl.piped(&a.chain, step); piped {
@@ -242,6 +257,12 @@ builtin_send :: proc(a: ^App, step: cl.Step, args: string, move: bool) -> bool {
     }
     if len(srcs) == 0 {
         return true
+    }
+    for src in srcs {
+        if pane.in_archive(src) {
+            // (hole archive-copy-out :tags files :sev gap) no hz_read yet, so nothing leaves an archive.
+            return fail(a, "can't copy out of an archive yet")
+        }
     }
     if dst == from.dir {
         return fail(a, "same dir on both sides")
