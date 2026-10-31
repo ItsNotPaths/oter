@@ -4,12 +4,14 @@ import "core:fmt"
 import "core:strings"
 import sdl "vendor:sdl3"
 import "oket:input"
+import "../pane"
 
 SEC_GLOBAL :: input.Section(0)
 SEC_PANES :: input.Section(1)
 SEC_SIDEBAR :: input.Section(2) // no pane rows, so it swallows the pane keys
+SEC_PICK :: input.Section(3) // the file dialog's pick pane, before its pane rows
 
-SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
+SECTION_NAMES := [?]string{"global", "panes", "sidebar", "pick"}
 
 // Every default row, in binds.conf's own words. The file is written from these on first start.
 DEFAULT_BINDS :: `[global]
@@ -24,6 +26,7 @@ ctrl+@AE12  = :font.bigger
 ctrl+-      = :font.smaller
 ctrl+0      = :font.reset
 tab         = :sidebar
+alt+enter   = :stage :confirm
 
 [panes]
 up          = :up
@@ -71,6 +74,9 @@ enter       = :open $o_src
 7           = :open $o_src @7
 8           = :open $o_src @8
 9           = :open $o_src @9
+
+[pick]
+del         = :unpick
 `
 
 // Rows from `text` on top of `binds`: a chord already bound is replaced, `none` unbinds it.
@@ -115,7 +121,12 @@ bind_run :: proc(a: ^App, ev: sdl.KeyboardEvent) -> bool {
     if input.code_is_modifier(code) {
         return false
     }
-    path := a.mode == .Sidebar ? []input.Section{SEC_SIDEBAR, SEC_GLOBAL} : []input.Section{SEC_PANES, SEC_GLOBAL}
+    path := []input.Section{SEC_PANES, SEC_GLOBAL}
+    if a.mode == .Sidebar {
+        path = {SEC_SIDEBAR, SEC_GLOBAL}
+    } else if pane.is_pick(&a.panes[a.active]) {
+        path = {SEC_PICK, SEC_PANES, SEC_GLOBAL}
+    }
     b, ok := input.bind_lookup(a.binds[:], {code, mods_of(ev.mod)}, path)
     if !ok {
         return false

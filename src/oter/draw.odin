@@ -89,7 +89,11 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
     g := &r.grid
     gfx.grid_clear(g, th[.Fg], bg)
     cols, rows := region_cells(a, r)
-    header(g, cols, p.dir, active, th, marks_note(p))
+    title := p.dir
+    if s, ok := p.src.(pane.Pick); ok {
+        title = PICK_TITLES[s.want]
+    }
+    header(g, cols, title, active, th, marks_note(p))
 
     rows -= 1
     if p.err != nil {

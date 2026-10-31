@@ -59,6 +59,7 @@ App :: struct {
     },
     paint:     Maybe(bool), // while the key that ran `:mark` is held, up/down set this mark
     paint_key: input.Code,
+    pick_out: string, // the file dialog's answer file; "" when not one
     running: bool,
 }
 
@@ -76,6 +77,11 @@ gl_loader :: proc(p: rawptr, name: cstring) {
 main :: proc() {
     if handled, ok := install_cli(os.args[1:]); handled {
         os.exit(ok ? 0 : 1)
+    }
+    pk, picking, pick_ok := pick_args(os.args[1:])
+    if picking && !pick_ok {
+        fmt.eprintln(USAGE_PICK)
+        os.exit(2)
     }
     sdl.SetHint(sdl.HINT_APP_ID, APP_ID)
     if !sdl.Init({.VIDEO}) {
@@ -144,10 +150,14 @@ main :: proc() {
 
     start := os.get_working_directory(context.allocator) or_else "/"
     defer delete(start)
-    for _ in 0 ..< a.config.panes {
-        p: pane.Pane
-        pane.open(&p, start)
-        append(&a.panes, p)
+    if picking {
+        pick_open(&a, pk, start)
+    } else {
+        for _ in 0 ..< a.config.panes {
+            p: pane.Pane
+            pane.open(&p, start)
+            append(&a.panes, p)
+        }
     }
     defer {
         for &p in a.panes {

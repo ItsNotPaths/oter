@@ -24,12 +24,26 @@ Pane :: struct {
 // Where the rows come from when `dir` is not a real dir.
 Source :: union {
     Archive,
+    Pick,
 }
 
 // Inside an archive: `dir` is `file` plus the path within it.
 Archive :: struct {
     file:  string, // owned
     items: []hz.Item, // owned
+}
+
+// A file dialog's answer: the rows are whole paths thrown in, `dir` is "".
+Pick :: struct {
+    want:  Want,
+    paths: [dynamic]string, // owned
+}
+
+Want :: enum {
+    File,
+    Files,
+    Dir,
+    Save,
 }
 
 is_real :: proc(p: ^Pane) -> bool {
@@ -65,6 +79,10 @@ show :: proc(p: ^Pane, dir: string, select := "") {
         list_dir(p)
     case Archive:
         list_archive(p, s)
+    case Pick:
+        for path in s.paths {
+            append(&p.entries, Entry{name = strings.clone(path), is_dir = os.is_dir(path)})
+        }
     }
     slice.sort_by(p.entries[:], entry_less)
 
@@ -114,9 +132,15 @@ list_archive :: proc(p: ^Pane, s: Archive) {
 
 @(private)
 drop_source :: proc(p: ^Pane) {
-    if s, ok := p.src.(Archive); ok {
+    switch s in p.src {
+    case Archive:
         delete(s.file)
         hz.delete_items(s.items)
+    case Pick:
+        for path in s.paths {
+            delete(path)
+        }
+        delete(s.paths)
     }
     p.src = nil
 }
@@ -280,7 +304,7 @@ scroll :: proc(p: ^Pane, rows: int) {
 // Opens the dir under the cursor, in an archive too. False if it is not a dir.
 enter :: proc(p: ^Pane) -> bool {
     e, ok := current(p)
-    if !ok || !e.is_dir {
+    if !ok || !e.is_dir || is_pick(p) {
         return false
     }
     show(p, path_of(p, e.name))
@@ -290,7 +314,7 @@ enter :: proc(p: ^Pane) -> bool {
 // Opens the parent, with the cursor on the dir we came from.
 up :: proc(p: ^Pane) {
     parent := strings.clone(filepath.dir(p.dir), context.temp_allocator)
-    if parent == "" || parent == p.dir {
+    if parent == "" || parent == p.dir || is_pick(p) {
         return
     }
     came_from := strings.clone(filepath.base(p.dir), context.temp_allocator)

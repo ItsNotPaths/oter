@@ -66,11 +66,16 @@ chain_pump :: proc(a: ^App) {
             cl.done(ch, run_builtin(a, filled_step))
             continue
         }
+        _, piped := cl.piped(ch, step)
+        if p := &a.panes[a.active]; pane.is_pick(p) {
+            cl.done(ch, piped || step.feeds ? fail(a, NO_PICK_SHELL) : pick_mv(a, p, cmd))
+            continue
+        }
         if !pane.is_real(&a.panes[a.active]) {
             cl.done(ch, fail(a, NO_SHELL))
             continue
         }
-        if _, piped := cl.piped(ch, step); piped || step.feeds {
+        if piped || step.feeds {
             filter_start(a, step, cmd)
             return
         }
@@ -109,6 +114,13 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         return builtin_send(a, step, args, name == "move")
     case "quit":
         a.running = false
+    case "confirm":
+        return pick_confirm(a)
+    case "unpick":
+        if !pane.is_pick(p) {
+            return fail(a, ":unpick: only in the pick pane")
+        }
+        pane.pick_drop(p, pane.selection(p))
     case "stage":
         if a.mode == .Panes {
             cl_open(a, args)
@@ -127,6 +139,9 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         i, ok := pane_target(a, args[len(raw):])
         if !ok {
             return fail(a, ":open <dir> [@N]")
+        }
+        if pane.is_pick(&a.panes[i]) {
+            return fail(a, ":open: not over the pick pane")
         }
         if os.is_dir(path) {
             pane.open(&a.panes[i], path)
@@ -183,6 +198,9 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "font.reset":
         return font_reset(a)
     case "np":
+        if pane.is_pick(p) {
+            return fail(a, ":np: not from the pick pane")
+        }
         dir, real := strings.clone(p.dir, context.temp_allocator), pane.is_real(p) // inject_at moves `p`
         np: pane.Pane
         pane.open(&np, real ? dir : filepath.dir(dir))
@@ -195,6 +213,9 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "close":
         if len(a.panes) < 2 {
             return fail(a, ":close: one pane left")
+        }
+        if pane.is_pick(p) {
+            return fail(a, ":close: the pick pane stays")
         }
         pane.destroy(p)
         ordered_remove(&a.panes, a.active)
@@ -246,16 +267,6 @@ builtin_sel :: proc(a: ^App) -> bool {
 // `:copy <target>` / `:move <target>`: the piped paths, else the selection.
 @(private = "file")
 builtin_send :: proc(a: ^App, step: cl.Step, args: string, move: bool) -> bool {
-    dst, ok := target_dir(a, args)
-    if !ok {
-        return fail(a, fmt.tprintf(":%s: %s is not a pane or a dir", move ? "move" : "copy", args))
-    }
-    if dst == "" {
-        return true // no pane there: nothing to do
-    }
-    if i, is_pane := pane_target(a, args); is_pane && !pane.is_real(&a.panes[i]) {
-        return fail(a, "can't copy into an archive")
-    }
     from := &a.panes[a.active]
     srcs: []string
     if feed, piped := cl.piped(&a.chain, step); piped {
@@ -265,6 +276,23 @@ builtin_send :: proc(a: ^App, step: cl.Step, args: string, move: bool) -> bool {
     }
     if len(srcs) == 0 {
         return true
+    }
+    if i, is_pane := pane_target(a, args); is_pane && pane.is_pick(&a.panes[i]) {
+        return pick_throw(a, &a.panes[i], srcs)
+    }
+    if pane.is_pick(from) { // its rows are paths, not files: out of it is a drop
+        pane.pick_drop(from, srcs)
+        return true
+    }
+    dst, ok := target_dir(a, args)
+    if !ok {
+        return fail(a, fmt.tprintf(":%s: %s is not a pane or a dir", move ? "move" : "copy", args))
+    }
+    if dst == "" {
+        return true // no pane there: nothing to do
+    }
+    if i, is_pane := pane_target(a, args); is_pane && !pane.is_real(&a.panes[i]) {
+        return fail(a, "can't copy into an archive")
     }
     archive, one_side := srcs_archive(srcs)
     if !one_side {
