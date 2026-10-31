@@ -40,6 +40,8 @@ App :: struct {
     drawer:  Drawer,
     mode:    Mode,
     sends:   [dynamic]Send,
+    listings: [dynamic]^Listing, // archives being listed
+    archives: [dynamic]Cached, // listed ones, oldest first
     filter:  ^Filter, // the piped step the chain waits on
     line:    Cl,
     chain:   cl.Chain,
@@ -136,6 +138,7 @@ main :: proc() {
         delete(a.places_file)
     }
     defer delete(a.sends) // a send still running at quit is left to the OS
+    defer archives_destroy(&a)
 
     start := os.get_working_directory(context.allocator) or_else "/"
     defer delete(start)

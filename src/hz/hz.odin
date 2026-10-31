@@ -1,4 +1,4 @@
-// hatchzip's archive listing, through the `hz` crate (`hz/`, built by build.sh).
+// hatchzip's archive listing and extraction, through the `hz` crate (`hz/`, built by build.sh).
 package hz
 
 import "core:strings"
@@ -10,6 +10,15 @@ Error :: enum i32 {
     Not_Archive = 1,
     Password    = 2,
 }
+
+State :: enum i32 {
+    Progress = 0,
+    Done     = 1,
+    Skipped  = 2,
+}
+
+// Called on the extracting thread: pick `i` is at `pct` percent by bytes, or done, or skipped.
+Report :: proc "c" (data: rawptr, i: uint, pct: u8, state: State)
 
 Item :: struct {
     path:   string,
@@ -32,6 +41,8 @@ C_List :: struct {
 foreign lib {
     hz_list :: proc(path: cstring, out: ^C_List) -> Error ---
     hz_free :: proc(list: ^C_List) ---
+    hz_extract :: proc(archive: cstring, picks: [^]cstring, n: uint, dst_dir: cstring, report: Report, data: rawptr) -> cstring ---
+    hz_free_str :: proc(s: cstring) ---
 }
 
 // Every item of the archive at `path`, paths as stored. Read-only.
@@ -49,9 +60,30 @@ list :: proc(path: string, alloc := context.allocator) -> (items: []Item, err: E
     return
 }
 
+clone_items :: proc(items: []Item, alloc := context.allocator) -> []Item {
+    out := make([]Item, len(items), alloc)
+    for it, i in items {
+        out[i] = {strings.clone(it.path, alloc), it.is_dir}
+    }
+    return out
+}
+
 delete_items :: proc(items: []Item, alloc := context.allocator) {
     for it in items {
         delete(it.path, alloc)
     }
     delete(items, alloc)
+}
+
+// Each of `picks` (paths inside the archive, a file or a dir's tree) to `dst_dir/<base name>`.
+// One already there is skipped. Temp-allocated error, "" if none.
+extract :: proc(archive: string, picks: []string, dst_dir: string, report: Report, data: rawptr) -> string {
+    tmp := context.temp_allocator
+    cs := make([]cstring, len(picks), tmp)
+    for p, i in picks {
+        cs[i] = strings.clone_to_cstring(p, tmp)
+    }
+    err := hz_extract(strings.clone_to_cstring(archive, tmp), raw_data(cs), len(cs), strings.clone_to_cstring(dst_dir, tmp), report, data)
+    defer hz_free_str(err)
+    return strings.clone_from_cstring(err, tmp) if err != nil else ""
 }

@@ -15,13 +15,15 @@ Send :: struct {
     landed:  int,
 }
 
-send_start :: proc(a: ^App, srcs: []string, src_dir, dst_dir: string, move: bool) {
-    append(&a.sends, Send{fsop.start(srcs, dst_dir, move, move ? a.config.move[:] : a.config.copy[:]), strings.clone(src_dir), 0})
+send_start :: proc(a: ^App, srcs: []string, src_dir, dst_dir: string, move: bool, archive := "") {
+    lines := move ? a.config.move[:] : a.config.copy[:]
+    append(&a.sends, Send{fsop.start(srcs, dst_dir, move, lines, archive), strings.clone(src_dir), 0})
 }
 
 // Each frame: re-list the panes an item landed in; finish what the worker finished.
 jobs_poll :: proc(a: ^App) {
     filter_poll(a)
+    archives_poll(a)
     #reverse for &s, i in a.sends {
         j := s.job
         finished := fsop.is_finished(j) // read first: once set, every field is final

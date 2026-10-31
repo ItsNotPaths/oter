@@ -121,10 +121,14 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "open":
         raw, path := cl.first_arg(args)
         i, ok := pane_target(a, args[len(raw):])
-        if !ok || !os.is_dir(path) {
+        if !ok {
             return fail(a, ":open <dir> [@N]")
         }
-        pane.open(&a.panes[i], path)
+        if os.is_dir(path) {
+            pane.open(&a.panes[i], path)
+        } else if !archive_open(a, i, path) {
+            return fail(a, fmt.tprintf(":open: no dir or archive at %s", path))
+        }
         a.active = i
         if a.mode == .Sidebar {
             mode_set(a, .Panes)
@@ -152,8 +156,8 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "bottom":
         pane.move(p, +len(p.entries))
     case "enter":
-        if _, err := pane.enter(p); err != "" {
-            return fail(a, err)
+        if e, ok := pane.current(p); ok && !pane.enter(p) && pane.is_real(p) {
+            archive_open(a, a.active, pane.path_of(p, e.name)) // no archives in archives
         }
     case "parent":
         pane.up(p)
@@ -175,15 +179,15 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "font.reset":
         return font_reset(a)
     case "np":
-        dir := p.dir
-        if s, ok := p.src.(pane.Archive); ok {
-            dir = filepath.dir(s.file) // a new pane starts real
-        }
+        dir, real := strings.clone(p.dir, context.temp_allocator), pane.is_real(p) // inject_at moves `p`
         np: pane.Pane
-        pane.open(&np, dir)
+        pane.open(&np, real ? dir : filepath.dir(dir))
         a.active += 1
         inject_at(&a.panes, a.active, np)
         frame_pane_insert(&a.frame, a.active)
+        if !real {
+            archive_open(a, a.active, dir) // cached, so at once
+        }
     case "close":
         if len(a.panes) < 2 {
             return fail(a, ":close: one pane left")
@@ -258,18 +262,35 @@ builtin_send :: proc(a: ^App, step: cl.Step, args: string, move: bool) -> bool {
     if len(srcs) == 0 {
         return true
     }
-    for src in srcs {
-        if pane.in_archive(src) {
-            // (hole archive-copy-out :tags files :sev gap) no hz_read yet, so nothing leaves an archive.
-            return fail(a, "can't copy out of an archive yet")
-        }
+    archive, one_side := srcs_archive(srcs)
+    if !one_side {
+        return fail(a, "archive and disk items in one send")
+    }
+    if archive != "" && move {
+        return fail(a, "archives are read-only: copy, not move")
     }
     if dst == from.dir {
         return fail(a, "same dir on both sides")
     }
-    send_start(a, srcs, from.dir, dst, move)
+    send_start(a, srcs, from.dir, dst, move, archive)
     pane.unmark(from)
     return true
+}
+
+// The archive every src is inside, "" if none is. Not ok if some are and some are not.
+@(private = "file")
+srcs_archive :: proc(srcs: []string) -> (archive: string, ok: bool) {
+    for src, k in srcs {
+        file, has := pane.archive_of(src)
+        if !has || file == src {
+            file = "" // a real file or dir
+        }
+        if k > 0 && file != archive {
+            return "", false
+        }
+        archive = file
+    }
+    return archive, true
 }
 
 // `@N` / `@±N` names a pane's dir, anything else a path. "" with ok: no pane there.

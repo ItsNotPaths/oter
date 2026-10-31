@@ -121,22 +121,45 @@ drop_source :: proc(p: ^Pane) {
     p.src = nil
 }
 
-// A path under a file, not a dir: inside an archive.
-in_archive :: proc(path: string) -> bool {
-    for dir := filepath.dir(path); ; dir = filepath.dir(dir) {
-        if st, err := os.stat(dir, context.temp_allocator); err == nil {
-            return st.type != .Directory
+// The archive in `path`: the path itself, or the first parent that exists, if that is a file.
+archive_of :: proc(path: string) -> (file: string, ok: bool) {
+    for p := path; ; p = filepath.dir(p) {
+        if st, err := os.stat(p, context.temp_allocator); err == nil {
+            return p, st.type != .Directory
         }
-        if dir == filepath.dir(dir) {
-            return false
+        if p == filepath.dir(p) {
+            return
         }
     }
+}
+
+// Shows `dir`, inside the listed archive `file`; its root if `dir` is not in it. Takes `items`.
+open_archive :: proc(p: ^Pane, file: string, items: []hz.Item, dir: string, select := "") {
+    inner := strings.trim_prefix(strings.trim_prefix(dir, file), "/")
+    found := inner == ""
+    for it in items {
+        if strings.has_prefix(it.path, inner) && (len(it.path) == len(inner) || it.path[len(inner)] == '/') {
+            found = true
+            break
+        }
+    }
+    src := Archive{strings.clone(file), items} // `file` and `dir` may be the pane's own
+    at := strings.clone(found ? dir : file, context.temp_allocator)
+    drop_source(p)
+    p.src = src
+    show(p, at, select)
+}
+
+@(private)
+in_some_archive :: proc(path: string) -> bool {
+    file, ok := archive_of(path)
+    return ok && file != path
 }
 
 // Lists the same dir again, cursor kept by name. Marks on paths that are gone are dropped.
 relist :: proc(p: ^Pane) {
     #reverse for m, i in p.marks {
-        if _, err := os.lstat(m, context.temp_allocator); err != nil && !in_archive(m) {
+        if _, err := os.lstat(m, context.temp_allocator); err != nil && !in_some_archive(m) {
             delete(m)
             ordered_remove(&p.marks, i)
         }
@@ -254,32 +277,14 @@ scroll :: proc(p: ^Pane, rows: int) {
     p.top = clamp(p.top, 0, max(len(p.entries) - rows, 0))
 }
 
-// Opens the dir or archive under the cursor. False if it is neither; `err` when that is worth saying.
-enter :: proc(p: ^Pane) -> (ok: bool, err: string) {
-    e, has := current(p)
-    if !has {
-        return
+// Opens the dir under the cursor, in an archive too. False if it is not a dir.
+enter :: proc(p: ^Pane) -> bool {
+    e, ok := current(p)
+    if !ok || !e.is_dir {
+        return false
     }
-    path := path_of(p, e.name)
-    if e.is_dir {
-        show(p, path)
-        return true, ""
-    }
-    if !is_real(p) {
-        return // no archives inside archives
-    }
-    items, herr := hz.list(path)
-    switch herr {
-    case .None:
-    case .Not_Archive:
-        return
-    case .Password:
-        // (hole archive-password :tags files :sev gap) no prompt; a 7z with locked headers only says so.
-        return false, "needs a password"
-    }
-    p.src = Archive{strings.clone(path), items}
-    show(p, path)
-    return true, ""
+    show(p, path_of(p, e.name))
+    return true
 }
 
 // Opens the parent, with the cursor on the dir we came from.

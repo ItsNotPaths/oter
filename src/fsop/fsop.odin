@@ -10,6 +10,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import "oket:cl"
+import "../hz"
 
 // Wakes the host's loop from the worker when an item or the job ends. The host sets it once.
 wake_hook := proc() {}
@@ -24,6 +25,7 @@ Item :: struct {
 
 Job :: struct {
     dst_dir:  string,
+    archive:  string, // set: every item is inside this archive, and is extracted
     move:     bool,
     lines:    []string, // the host's; sh lines, best first, the first whose program is installed runs
     items:    []Item,
@@ -35,9 +37,10 @@ Job :: struct {
 
 // `lines` must outlive the job. In them `$o_src` is the item, `$o_dir` the target dir,
 // `$o_dst` the item's path in it.
-new_job :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string) -> ^Job {
+new_job :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string, archive := "") -> ^Job {
     j := new(Job)
     j.dst_dir = strings.clone(dst_dir)
+    j.archive = strings.clone(archive)
     j.move = move
     j.lines = lines
     j.items = make([]Item, len(srcs))
@@ -54,13 +57,14 @@ destroy :: proc(j: ^Job) {
     }
     delete(j.items)
     delete(j.dst_dir)
+    delete(j.archive)
     delete(j.err)
     free(j)
 }
 
 // Runs `send` on a worker thread. Free with `destroy` once `is_finished`.
-start :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string) -> ^Job {
-    j := new_job(srcs, dst_dir, move, lines)
+start :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string, archive := "") -> ^Job {
+    j := new_job(srcs, dst_dir, move, lines, archive)
     ctx := runtime.default_context() // own temp allocator; the main loop frees its own each frame
     ctx.allocator = context.allocator
     thread.create_and_start_with_poly_data(j, send, ctx, self_cleanup = true)
@@ -75,6 +79,10 @@ is_finished :: proc(j: ^Job) -> bool {
 send :: proc(j: ^Job) {
     defer wake_hook() // after `finished`: defers run last first
     defer sync.atomic_store(&j.finished, true)
+    if j.archive != "" {
+        extract(j)
+        return
+    }
     line, found := pick(j.lines)
     if !found {
         j.err = strings.clone(j.move ? "no move tool installed" : "no copy tool installed")
@@ -99,6 +107,36 @@ send :: proc(j: ^Job) {
         sync.atomic_store(&it.done, true)
         wake_hook()
     }
+}
+
+// One pass over the archive: each unit it needs is decoded once.
+@(private = "file")
+extract :: proc(j: ^Job) {
+    picks := make([]string, len(j.items), context.temp_allocator)
+    for it, i in j.items {
+        picks[i] = strings.trim_prefix(it.src[len(j.archive):], "/")
+    }
+    if err := hz.extract(j.archive, picks, j.dst_dir, report, j); err != "" {
+        j.err = strings.clone(err)
+    }
+}
+
+@(private = "file")
+report :: proc "c" (data: rawptr, i: uint, pct: u8, state: hz.State) {
+    context = runtime.default_context()
+    j := (^Job)(data)
+    it := &j.items[i]
+    switch state {
+    case .Progress:
+        sync.atomic_store(&it.pct, int(pct))
+    case .Done:
+        j.done += 1
+        sync.atomic_store(&it.done, true)
+    case .Skipped:
+        j.skipped += 1
+        sync.atomic_store(&it.done, true)
+    }
+    wake_hook()
 }
 
 @(private = "file")

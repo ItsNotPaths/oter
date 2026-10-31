@@ -9,6 +9,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 hatchzip-core = { path = "../vendor/hatchzip/crates/core" }
+anyhow = "1"
 
 [profile.release]
 lto = "thin"
