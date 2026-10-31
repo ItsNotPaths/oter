@@ -10,6 +10,9 @@ qwerty :: proc(name: string) -> (input.Code, bool) {
     if len(name) == 1 && name[0] >= 'a' && name[0] <= 'z' {
         return input.Code(4 + int(name[0] - 'a')), true
     }
+    if len(name) == 1 && name[0] >= '1' && name[0] <= '9' {
+        return input.Code(30 + int(name[0] - '1')), true
+    }
     if name == ";" {
         return 51, true
     }
@@ -84,10 +87,12 @@ the_sidebar_swallows_pane_keys :: proc(t: ^testing.T) {
     defer delete(bad)
 
     sidebar := []input.Section{oter.SEC_SIDEBAR, oter.SEC_GLOBAL}
-    _, ok := line_for(binds[:], "down", sidebar)
+    _, ok := line_for(binds[:], "y", sidebar)
     testing.expect(t, !ok)
     line, _ := line_for(binds[:], "tab", sidebar)
     testing.expect_value(t, line, ":sidebar")
     line, _ = line_for(binds[:], "esc", sidebar)
     testing.expect_value(t, line, ":sidebar")
+    line, _ = line_for(binds[:], "3", sidebar)
+    testing.expect_value(t, line, ":open $o_src @3")
 }

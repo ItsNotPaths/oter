@@ -44,13 +44,23 @@ draw :: proc(a: ^App) {
     region_rim(a, &f.drawer)
 }
 
-// (hole places :tags ui :sev gap) sidebar is an empty box; no places file.
 draw_sidebar :: proc(a: ^App, r: ^Region) {
     th := a.theme
+    bg := gfx.opaque(th[.Bg])
     g := &r.grid
-    gfx.grid_clear(g, th[.Fg], gfx.opaque(th[.Bg]))
-    cols, _ := region_cells(a, r)
+    gfx.grid_clear(g, th[.Fg], bg)
+    cols, rows := region_cells(a, r)
     header(g, cols, "places", a.mode == .Sidebar, th)
+    for i in 0 ..< min(place_slots(a), rows - 1) {
+        pl := i < len(a.places) ? a.places[i] : Place{}
+        row_bg := bg
+        if i == a.place && a.mode == .Sidebar {
+            row_bg = gfx.opaque(th[.Dim])
+            row_fill(g, i + 1, th[.Fg], row_bg)
+        }
+        write_clipped(g, 0, i + 1, 3, fmt.tprintf("%02d", i + 1), th[.Dim], row_bg, {}) // `:place` counts these
+        write_clipped(g, 3, i + 1, cols - 3, pl.text, pl.ok ? th[.Fg] : th[.Dim], row_bg, {})
+    }
 }
 
 draw_cl :: proc(a: ^App, r: ^Region) {
@@ -97,9 +107,7 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
         row_bg := bg
         if i == p.cursor {
             row_bg = gfx.opaque(active ? th[.Dim] : gfx.shade(th[.Dim], 50))
-            for col in 0 ..< g.cols {
-                gfx.grid_put(g, col, row + 1, gfx.Cell{' ', fg, row_bg, {}, 0})
-            }
+            row_fill(g, row + 1, fg, row_bg)
         }
         if e.marked {
             gfx.grid_put(g, 0, row + 1, gfx.Cell{'▎', th[.Accent], row_bg, {}, 0})
@@ -127,6 +135,12 @@ header :: proc(g: ^gfx.Grid, cols: int, title: string, focused: bool, th: gfx.Th
         gfx.grid_put(g, col, 0, gfx.Cell{' ', th[.Accent], bg, attrs, 0})
     }
     write_clipped(g, 0, 0, cols, title, th[.Accent], bg, attrs)
+}
+
+row_fill :: proc(g: ^gfx.Grid, y: int, fg: [3]f32, bg: gfx.Rgba) {
+    for col in 0 ..< g.cols {
+        gfx.grid_put(g, col, y, gfx.Cell{' ', fg, bg, {}, 0})
+    }
 }
 
 write_clipped :: proc(g: ^gfx.Grid, x, y, width: int, text: string, fg: [3]f32, bg: gfx.Rgba, attrs: gfx.Attrs) {

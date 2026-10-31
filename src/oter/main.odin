@@ -29,6 +29,9 @@ App :: struct {
     frame:   Frame,
     theme:   gfx.Theme,
     panes:   [dynamic]pane.Pane,
+    places:  [dynamic]Place,
+    place:   int, // the sidebar cursor
+    places_file: string, // owned; "" saves nowhere
     active:  int,
     drawer:  Drawer,
     mode:    Mode,
@@ -108,6 +111,12 @@ main :: proc() {
     defer cl.destroy(&a.chain)
     defer input.binds_destroy(&a.binds)
     binds_load(&a)
+    places_load(&a)
+    defer {
+        places_clear(&a.places)
+        delete(a.places)
+        delete(a.places_file)
+    }
     defer delete(a.sends) // a send still running at quit is left to the OS
 
     start := os.get_working_directory(context.allocator) or_else "/"

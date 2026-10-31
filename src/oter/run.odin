@@ -19,7 +19,11 @@ run_line :: proc(a: ^App, line: string) {
     })
     p := &a.panes[a.active]
     vars: cl.Vars
-    if e, ok := pane.current(p); ok {
+    if a.mode == .Sidebar {
+        if path, ok := place_current(a); ok {
+            vars[var("src")] = path
+        }
+    } else if e, ok := pane.current(p); ok {
         vars[var("src")] = filepath.join({p.dir, e.name}, context.temp_allocator) or_else ""
     }
     vars[var("dir")] = p.dir
@@ -35,13 +39,15 @@ chain_pump :: proc(a: ^App) {
         if !ok {
             return
         }
-        if !step.shell {
-            cl.done(ch, run_builtin(a, step))
-            continue
-        }
         cmd, missing, filled := cl.fill(ch.vars, step.text)
         if !filled {
             cl.done(ch, fail(a, fmt.tprintf("no $o_%s here", missing)))
+            continue
+        }
+        if !step.shell {
+            filled_step := step
+            filled_step.text = cmd
+            cl.done(ch, run_builtin(a, filled_step))
             continue
         }
         if _, piped := cl.piped(ch, step); piped || step.feeds {
@@ -91,6 +97,19 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         case .Panes:
             mode_set(a, .Sidebar)
         case .Sidebar:
+            mode_set(a, .Panes)
+        }
+    case "place":
+        return builtin_place(a, args)
+    case "open":
+        raw, path := cl.first_arg(args)
+        i, ok := pane_target(a, args[len(raw):])
+        if !ok || !os.is_dir(path) {
+            return fail(a, ":open <dir> [@N]")
+        }
+        pane.open(&a.panes[i], path)
+        a.active = i
+        if a.mode == .Sidebar {
             mode_set(a, .Panes)
         }
     case "drawer":

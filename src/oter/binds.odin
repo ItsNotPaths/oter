@@ -9,7 +9,6 @@ import "oket:input"
 
 SEC_GLOBAL :: input.Section(0)
 SEC_PANES :: input.Section(1)
-// (hole sidebar-keys :tags (ui input) :sev gap :needs places) the sidebar has no rows: no cursor, no enter.
 SEC_SIDEBAR :: input.Section(2) // no pane rows, so it swallows the pane keys
 
 SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
@@ -47,6 +46,23 @@ ctrl+right  = :sel | :move @+1
 
 [sidebar]
 esc         = :sidebar
+up          = :place cur -1
+down        = :place cur +1
+shift+up    = :place move -1
+shift+down  = :place move +1
+a           = :place set $o_dir
+s           = :place set =-=-=-=-=-=-=-=
+d           = :place clear
+enter       = :open $o_src
+1           = :open $o_src @1
+2           = :open $o_src @2
+3           = :open $o_src @3
+4           = :open $o_src @4
+5           = :open $o_src @5
+6           = :open $o_src @6
+7           = :open $o_src @7
+8           = :open $o_src @8
+9           = :open $o_src @9
 `
 
 // Rows from `text` on top of `binds`: a chord already bound is replaced, `none` unbinds it.
@@ -111,7 +127,7 @@ binds_load :: proc(a: ^App) {
     assert(len(bad) == 0, "a default bind row does not parse")
     delete(bad)
 
-    path := binds_path()
+    path := config_path("binds.conf")
     text, err := os.read_entire_file(path, context.temp_allocator)
     if err != nil {
         os.make_directory_all(filepath.dir(path))
@@ -130,13 +146,13 @@ binds_load :: proc(a: ^App) {
     }
 }
 
-@(private = "file")
-binds_path :: proc() -> string {
+// A file in ~/.config/oter, `$XDG_CONFIG_HOME` honoured.
+config_path :: proc(name: string) -> string {
     base := os.get_env("XDG_CONFIG_HOME", context.temp_allocator)
     if base == "" {
         base = filepath.join({os.get_env("HOME", context.temp_allocator), ".config"}, context.temp_allocator) or_else ""
     }
-    return filepath.join({base, "oter", "binds.conf"}, context.temp_allocator) or_else ""
+    return filepath.join({base, "oter", name}, context.temp_allocator) or_else ""
 }
 
 // The key's line for where focus is, run as if typed. True if a row answered.
