@@ -13,6 +13,7 @@ import "../pane"
 
 TITLE :: "oter"
 APP_ID :: "oter"
+PICK_APP_ID :: "oter-pick" // so a WM rule can float the file dialog
 
 // Who gets the keys. Panes is the hub: the sidebar and the line open only from it, and
 // Line > Term is one offshoot. Term covers the tray and a TUI's full drawer.
@@ -83,7 +84,7 @@ main :: proc() {
         fmt.eprintln(USAGE_PICK)
         os.exit(2)
     }
-    sdl.SetHint(sdl.HINT_APP_ID, APP_ID)
+    sdl.SetHint(sdl.HINT_APP_ID, picking ? PICK_APP_ID : APP_ID)
     if !sdl.Init({.VIDEO}) {
         fmt.eprintfln("SDL_Init failed: %s", sdl.GetError())
         os.exit(1)
@@ -94,7 +95,8 @@ main :: proc() {
     sdl.GL_SetAttribute(.CONTEXT_MINOR_VERSION, gfx.GL_MINOR)
     sdl.GL_SetAttribute(.CONTEXT_PROFILE_MASK, i32(transmute(u32)sdl.GL_CONTEXT_PROFILE_CORE))
 
-    window := sdl.CreateWindow(TITLE, 1200, 700, {.OPENGL, .RESIZABLE, .HIGH_PIXEL_DENSITY})
+    w, h: i32 = picking ? 900 : 1200, picking ? 560 : 700
+    window := sdl.CreateWindow(TITLE, w, h, {.OPENGL, .RESIZABLE, .HIGH_PIXEL_DENSITY})
     if window == nil {
         fmt.eprintfln("SDL_CreateWindow failed: %s", sdl.GetError())
         os.exit(1)
