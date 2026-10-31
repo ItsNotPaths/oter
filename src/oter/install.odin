@@ -11,6 +11,8 @@ UPDATE_LINE :: "curl -fsSL https://github.com/ItsNotPaths/oter/releases/latest/d
 
 // A template: its `oter` command word becomes the installed binary's full path.
 DESKTOP_SRC :: #load("../../oter.desktop", string)
+// A template like the launcher: termfilechooser runs it, it runs `oter --pick`.
+PICK_SRC :: #load("../../oter-pick.sh", string)
 // Found by name (`Icon=oter`) through the icon theme.
 ICON_SRC :: #load("../../assets/oter.svg", string)
 
@@ -20,6 +22,11 @@ Install_Target :: struct {
     bin:     string,
     desktop: string,
     icon:    string,
+}
+
+// The file dialog's wrapper, beside the binary. Temp-allocated.
+pick_script :: proc(t: Install_Target) -> string {
+    return filepath.join({filepath.dir(t.bin), "oter-pick.sh"}, context.temp_allocator) or_else ""
 }
 
 install_target :: proc() -> (t: Install_Target) {
@@ -45,6 +52,14 @@ install_target_destroy :: proc(t: ^Install_Target) {
     delete(t.icon)
     t^ = {}
 }
+
+PICK_HOWTO :: `  oter as the file dialog needs xdg-desktop-portal-termfilechooser, and two files of yours:
+    ~/.config/xdg-desktop-portal-termfilechooser/config
+      [filechooser]
+      cmd=%s
+    ~/.config/xdg-desktop-portal/portals.conf
+      [preferred]
+      org.freedesktop.impl.portal.FileChooser=termfilechooser`
 
 // Idempotent. Binary, binds.conf and config.conf are replaced; places is left alone.
 install_run :: proc(t: Install_Target, exe: string) -> (ok: bool, msg: string) {
@@ -79,11 +94,17 @@ install_run :: proc(t: Install_Target, exe: string) -> (ok: bool, msg: string) {
         }
         fmt.sbprintfln(&b, "  %s", dst)
     }
+    pick, _ := strings.replace_all(PICK_SRC, "exec oter ", strings.concatenate({"exec ", t.bin, " "}, tmp), tmp)
+    if err := os.write_entire_file(pick_script(t), pick, os.Permissions_Read_All + os.Permissions_Execute_All + {.Write_User}); err != nil {
+        return false, fmt.tprintf("install: cannot write %s (%v)", pick_script(t), err)
+    }
+    fmt.sbprintfln(&b, "  %s", pick_script(t))
 
     bin_dir := filepath.dir(t.bin)
     if !on_path(bin_dir) {
         fmt.sbprintfln(&b, "  %s is not on your PATH. Add it:\n    export PATH=\"%s:$PATH\"", bin_dir, bin_dir)
     }
+    fmt.sbprintfln(&b, PICK_HOWTO, pick_script(t))
     fmt.sbprintf(&b, "installed %s%s", t.bin, exe != t.bin ? "; restart to run it" : "")
     return true, strings.to_string(b)
 }
@@ -94,7 +115,7 @@ install_remove :: proc(t: Install_Target) -> (ok: bool, msg: string) {
         return false, "uninstall: no $HOME, so nothing could have been installed"
     }
     b := strings.builder_make(context.temp_allocator)
-    for path in ([?]string{t.config, t.desktop, t.icon, t.bin}) {
+    for path in ([?]string{t.config, t.desktop, t.icon, pick_script(t), t.bin}) {
         if !os.exists(path) {
             continue
         }

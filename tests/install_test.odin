@@ -51,6 +51,8 @@ an_install_lands_binary_config_launcher_and_icon :: proc(t: ^testing.T) {
     entry, _ := os.read_entire_file(tg.desktop, context.temp_allocator)
     testing.expect(t, strings.contains(string(entry), strings.concatenate({"Exec=", tg.bin}, context.temp_allocator)))
     testing.expect(t, os.exists(tg.icon))
+    pick, _ := os.read_entire_file(oter.pick_script(tg), context.temp_allocator)
+    testing.expect(t, strings.contains(string(pick), strings.concatenate({"exec ", tg.bin, " --pick"}, context.temp_allocator)))
 }
 
 // An uninstall you have to finish by hand is not one.
@@ -63,7 +65,7 @@ an_uninstall_leaves_nothing :: proc(t: ^testing.T) {
 
     ok, _ := oter.install_remove(tg)
     testing.expect(t, ok)
-    for p in ([]string{tg.config, tg.bin, tg.desktop, tg.icon}) {
+    for p in ([]string{tg.config, tg.bin, tg.desktop, tg.icon, oter.pick_script(tg)}) {
         testing.expect(t, !os.exists(p), p)
     }
 }
