@@ -27,6 +27,7 @@ defaults_open_two_panes_in_gruvbox :: proc(t: ^testing.T) {
     testing.expect_value(t, len(bad), 0)
     testing.expect_value(t, cfg.panes, 2)
     testing.expect_value(t, cfg.theme, "gruvbox")
+    testing.expect_value(t, cfg.pick, 0.6)
     testing.expect(t, len(cfg.copy) > 0 && len(cfg.move) > 0)
 }
 
@@ -55,4 +56,20 @@ bad_settings_are_reported_and_the_rest_lands :: proc(t: ^testing.T) {
     testing.expect_value(t, len(bad), 4)
     testing.expect_value(t, cfg.theme, "nord")
     testing.expect_value(t, cfg.panes, 3)
+}
+
+// The pick popup's share of the screen: 0.6 unless the file says, and nonsense is reported.
+@(test)
+pick_share_defaults_and_refuses_nonsense :: proc(t: ^testing.T) {
+    cfg: oter.Config
+    defer oter.config_destroy(&cfg)
+    bad := load(&cfg, "[launch]\npick = 0.4\n")
+    defer free_bad(bad)
+    testing.expect_value(t, len(bad), 0)
+    testing.expect_value(t, cfg.pick, 0.4)
+
+    worse := oter.config_parse(&cfg, "[launch]\npick = 3\n", "config.conf")
+    defer free_bad(worse)
+    testing.expect_value(t, len(worse), 1)
+    testing.expect_value(t, cfg.pick, 0.4)
 }

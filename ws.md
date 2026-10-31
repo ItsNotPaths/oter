@@ -216,7 +216,8 @@ Decisions:
   `del = :unpick`.
 - `alt+enter` = `:stage :confirm`, then `enter`: the rows go to `out`, one path per line, and
   oter quits. Closing the window or `:quit` writes nothing: cancel.
-- `--pick` opens a 900x560 window with app id `oter-pick`; floating it is a WM rule.
+- Windows open at a share of the primary display's usable area (oket's `window_size`): 0.9
+  normally, `[launch] pick` (0.6) for `--pick`, whose app id is `oter-pick` for a WM rule.
 - The pick pane cannot be closed, `:open`ed over or entered; `:np` from it is refused.
 - `:oter install` puts `oter-pick.sh` beside the binary and prints the termfilechooser `config`
   and `portals.conf` lines; the user adds those.

@@ -12,6 +12,8 @@ CONFIG_SECTIONS := [?]string{"launch", "theme", "copy", "move"}
 // Every default, in config.conf's own words. The file is written from this on first start.
 DEFAULT_CONFIG :: `[launch]
 panes = 2
+# the file dialog's window, as a share of the screen
+pick = 0.6
 
 # helix TOML from themes/<name>.toml beside this file; gruvbox is built in
 [theme]
@@ -29,6 +31,7 @@ line = mv -T --update=none -- $o_src $o_dst
 
 Config :: struct {
     panes: int, // open at launch
+    pick:  f32, // the pick window's share of the display
     theme: string, // owned
     copy:  [dynamic]string, // owned
     move:  [dynamic]string, // owned
@@ -46,6 +49,13 @@ config_parse :: proc(cfg: ^Config, text, file: string) -> (bad: [dynamic]string)
                 continue
             }
             cfg.panes = n
+        case "launch.pick":
+            f, ok := strconv.parse_f32(r.value)
+            if !ok || f < 0.1 || f > 1 {
+                append(&bad, fmt.aprintf("%s:%d: pick takes a share from 0.1 to 1", file, r.line))
+                continue
+            }
+            cfg.pick = f
         case "theme.name":
             delete(cfg.theme)
             cfg.theme = strings.clone(r.value)

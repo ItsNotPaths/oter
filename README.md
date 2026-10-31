@@ -93,6 +93,7 @@ with its line number while the rest still loads.
 ```conf
 # config.conf
 [launch] panes = 2            # panes open at launch
+         pick  = 0.6          # the file dialog window, as a share of the screen
 [theme]  name  = gruvbox      # helix TOML from themes/<name>.toml beside this file
 
 [copy]                        # tried in order; the first whose program is installed runs

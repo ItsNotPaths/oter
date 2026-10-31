@@ -14,6 +14,7 @@ import "../pane"
 TITLE :: "oter"
 APP_ID :: "oter"
 PICK_APP_ID :: "oter-pick" // so a WM rule can float the file dialog
+WINDOW_SHARE :: 0.9 // of the display's usable area; the WM or the user takes it from there
 
 // Who gets the keys. Panes is the hub: the sidebar and the line open only from it, and
 // Line > Term is one offshoot. Term covers the tray and a TUI's full drawer.
@@ -75,6 +76,15 @@ gl_loader :: proc(p: rawptr, name: cstring) {
     (^sdl.FunctionPointer)(p)^ = sdl.GL_GetProcAddress(name)
 }
 
+// A share of the primary display's usable area, in the units CreateWindow takes.
+window_size :: proc(share: f32) -> (w, h: i32) {
+    r: sdl.Rect
+    if !sdl.GetDisplayUsableBounds(sdl.GetPrimaryDisplay(), &r) {
+        return 1200, 760 // no display answered
+    }
+    return i32(f32(r.w) * share), i32(f32(r.h) * share)
+}
+
 main :: proc() {
     if handled, ok := install_cli(os.args[1:]); handled {
         os.exit(ok ? 0 : 1)
@@ -95,7 +105,11 @@ main :: proc() {
     sdl.GL_SetAttribute(.CONTEXT_MINOR_VERSION, gfx.GL_MINOR)
     sdl.GL_SetAttribute(.CONTEXT_PROFILE_MASK, i32(transmute(u32)sdl.GL_CONTEXT_PROFILE_CORE))
 
-    w, h: i32 = picking ? 900 : 1200, picking ? 560 : 700
+    a := App{home = home_resolve(), running = true}
+    defer home_destroy(&a.home)
+    defer config_destroy(&a.config)
+    config_load(&a) // before the window: it sizes the pick popup
+    w, h := window_size(picking ? a.config.pick : WINDOW_SHARE)
     window := sdl.CreateWindow(TITLE, w, h, {.OPENGL, .RESIZABLE, .HIGH_PIXEL_DENSITY})
     if window == nil {
         fmt.eprintfln("SDL_CreateWindow failed: %s", sdl.GetError())
@@ -125,7 +139,7 @@ main :: proc() {
 
     fsop.wake_hook = push_wake
 
-    a := App{window = window, home = home_resolve(), running = true}
+    a.window = window
     if !gfx.painter_init(&a.painter, atlas) {
         os.exit(1)
     }
@@ -137,10 +151,7 @@ main :: proc() {
     defer delete(a.line.text)
     defer cl.destroy(&a.chain)
     defer input.binds_destroy(&a.binds)
-    defer home_destroy(&a.home)
-    defer config_destroy(&a.config)
     binds_load(&a)
-    config_load(&a)
     places_load(&a)
     defer {
         places_clear(&a.places)
