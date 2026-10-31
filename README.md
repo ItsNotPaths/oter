@@ -2,8 +2,8 @@
 
 <img align="left" width="150" src="assets/oter.png" alt="oter">
 
-A small GUI file manager with N panes, a command line and a shell. It looks like a text grid
-and is built on [oket](https://github.com/ItsNotPaths/oket)'s pure packages.
+A small GUI file manager with N panes, a command line and a shell. glyph alligned, built
+ on [oket](https://github.com/ItsNotPaths/oket)'s pure packages, and uses [hatchzip](https://github.com/xevrion/hatchzip).
 
 Linux, x86_64.
 
