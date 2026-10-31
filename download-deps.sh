@@ -22,7 +22,7 @@ odin_install() {
 }
 
 echo "==> oket (gfx, font, cl, input, theme; built with -collection:oket=vendor/oket/src)"
-OKET_REV="95db0d31970c35dd65a49ed72b0e1b363aadbb77"
+OKET_REV="87528c2a31c1ba187faa38cfaec93c6de729d3fd"
 OKET_SRC="$VENDOR/oket"
 if [ ! -d "$OKET_SRC/.git" ]; then
     rm -rf "$OKET_SRC"
