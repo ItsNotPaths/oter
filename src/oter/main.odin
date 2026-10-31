@@ -40,6 +40,7 @@ App :: struct {
     drawer:  Drawer,
     mode:    Mode,
     sends:   [dynamic]Send,
+    filter:  ^Filter, // the piped step the chain waits on
     line:    Cl,
     chain:   cl.Chain,
     binds:   [dynamic]input.Bind,

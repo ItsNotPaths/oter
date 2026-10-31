@@ -11,7 +11,7 @@ import "../pane"
 run_line :: proc(a: ^App, line: string) {
     ch := &a.chain
     if ch.waiting {
-        status_set(a, "a shell step is still running", true)
+        status_set(a, "a step is still running", true)
         return
     }
     cl.parse(ch, line, a, proc(a: ^App, name: string) -> string {return ""}, proc(a: ^App, name: string) -> bool {
@@ -34,7 +34,7 @@ run_line :: proc(a: ^App, line: string) {
     chain_pump(a)
 }
 
-// Steps until the chain ends, or waits on a term0 step (term0_pump resumes it).
+// Steps until the chain ends, or waits on a term0 step or a filter (their polls resume it).
 chain_pump :: proc(a: ^App) {
     ch := &a.chain
     for {
@@ -63,8 +63,8 @@ chain_pump :: proc(a: ^App) {
             continue
         }
         if _, piped := cl.piped(ch, step); piped || step.feeds {
-            cl.done(ch, run_filter_step(a, step, cmd))
-            continue
+            filter_start(a, step, cmd)
+            return
         }
         if !term0_run(a, cmd) {
             cl.done(ch, false)
@@ -285,47 +285,4 @@ feed_paths :: proc(feed, base: string) -> []string {
         }
     }
     return out[:]
-}
-
-// A shell step inside a pipe: `sh -c` in the pane's dir, the feed on stdin, stdout passed on.
-@(private = "file")
-run_filter_step :: proc(a: ^App, step: cl.Step, cmd: string) -> bool {
-    feed, _ := cl.piped(&a.chain, step)
-    // (hole filter-async :tags input :sev gap) a filter runs on the main thread; a slow one freezes the UI.
-    out, msg, ok := run_filter(cmd, feed, a.panes[a.active].dir)
-    if !ok {
-        return fail(a, msg)
-    }
-    if step.feeds {
-        cl.feed_set(&a.chain, out)
-    } else {
-        pane.relist(&a.panes[a.active]) // the pipe's end may have changed what is here
-    }
-    return true
-}
-
-// The feed goes through a temp file: a pipe would block on a feed bigger than its buffer.
-@(private = "file")
-run_filter :: proc(cmd, feed, dir: string) -> (out, msg: string, ok: bool) {
-    f, err := os.create_temp_file("", "oter-feed-*")
-    if err != nil {
-        return "", os.error_string(err), false
-    }
-    path := strings.clone(os.name(f), context.temp_allocator) // close frees the name
-    defer os.remove(path)
-    defer os.close(f)
-    os.write_string(f, feed)
-    os.seek(f, 0, .Start)
-    state, stdout, stderr, perr := os.process_exec(
-        {command = {"sh", "-c", cmd}, working_dir = dir, stdin = f},
-        context.temp_allocator,
-    )
-    if perr != nil {
-        return "", os.error_string(perr), false
-    }
-    if !state.success {
-        why := strings.trim_space(string(stderr))
-        return "", fmt.tprintf("%s: %s", cmd, why != "" ? why : fmt.tprintf("exit %d", state.exit_code)), false
-    }
-    return string(stdout), "", true
 }

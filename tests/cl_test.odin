@@ -35,7 +35,7 @@ two_panes :: proc(t: ^testing.T, a: ^oter.App) -> (root: string) {
 @(private = "file")
 settle :: proc(a: ^oter.App) {
     deadline := time.tick_now()
-    for len(a.sends) > 0 && time.tick_since(deadline) < 5 * time.Second {
+    for (len(a.sends) > 0 || a.filter != nil) && time.tick_since(deadline) < 5 * time.Second {
         oter.jobs_poll(a)
         time.sleep(time.Millisecond)
     }
@@ -91,6 +91,7 @@ a_failing_filter_stops_the_chain :: proc(t: ^testing.T) {
     defer teardown(&a, root)
 
     oter.run_line(&a, ":sel | false | :copy @+1")
+    settle(&a)
     testing.expect_value(t, len(a.sends), 0)
     testing.expect(t, a.status_err)
 }
@@ -150,6 +151,7 @@ deleting_the_selection_removes_the_marked_files :: proc(t: ^testing.T) {
     pane.toggle_mark(p)
 
     oter.run_line(&a, ":sel | xargs -d '\\n' rm -rf --")
+    settle(&a)
     testing.expect(t, !os.exists(path(root, "left", "a.jpg")))
     testing.expect(t, !os.exists(path(root, "left", "c.jpg")))
     testing.expect(t, os.exists(path(root, "left", "b.txt")))
@@ -184,4 +186,21 @@ close_drops_the_focused_pane_but_never_the_last :: proc(t: ^testing.T) {
 
     oter.run_line(&a, ":close")
     testing.expect_value(t, len(a.panes), 1)
+}
+
+// A slow filter runs off the main thread: the line returns at once, and the chain ends after it.
+@(test)
+a_slow_filter_does_not_block :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+
+    start := time.tick_now()
+    oter.run_line(&a, ":sel | sleep 0.3 && cat | :copy @+1")
+    testing.expect(t, time.tick_since(start) < 100 * time.Millisecond)
+    testing.expect(t, a.chain.waiting)
+
+    settle(&a)
+    testing.expect(t, !a.chain.waiting)
+    testing.expect(t, os.exists(path(root, "right", "a.jpg")))
 }

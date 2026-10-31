@@ -71,7 +71,7 @@ term0_pump :: proc(a: ^App) {
     t := &a.term0
     pty.terminal_drain(t)
     if !pty.terminal_alive(t) {
-        if a.chain.waiting {
+        if a.chain.waiting && a.filter == nil {
             status_set(a, "term0's shell exited mid-step", true)
             cl.reset(&a.chain)
         }
