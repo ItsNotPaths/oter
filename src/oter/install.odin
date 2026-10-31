@@ -11,12 +11,15 @@ UPDATE_LINE :: "curl -fsSL https://github.com/ItsNotPaths/oter/releases/latest/d
 
 // A template: its `oter` command word becomes the installed binary's full path.
 DESKTOP_SRC :: #load("../../oter.desktop", string)
+// Found by name (`Icon=oter`) through the icon theme.
+ICON_SRC :: #load("../../assets/oter.svg", string)
 
 // Where an install writes. Owned; all "" with no $HOME.
 Install_Target :: struct {
     config:  string,
     bin:     string,
     desktop: string,
+    icon:    string,
 }
 
 install_target :: proc() -> (t: Install_Target) {
@@ -31,6 +34,7 @@ install_target :: proc() -> (t: Install_Target) {
         data, _ = filepath.join({home, ".local/share"}, context.temp_allocator)
     }
     t.desktop, _ = filepath.join({data, "applications", "oter.desktop"})
+    t.icon, _ = filepath.join({data, "icons/hicolor/scalable/apps", "oter.svg"})
     return
 }
 
@@ -38,6 +42,7 @@ install_target_destroy :: proc(t: ^Install_Target) {
     delete(t.config)
     delete(t.bin)
     delete(t.desktop)
+    delete(t.icon)
     t^ = {}
 }
 
@@ -47,7 +52,7 @@ install_run :: proc(t: Install_Target, exe: string) -> (ok: bool, msg: string) {
         return false, "install: no $HOME, so there is nowhere to install to"
     }
     b := strings.builder_make(context.temp_allocator)
-    for dir in ([?]string{filepath.dir(t.bin), t.config, filepath.dir(t.desktop)}) {
+    for dir in ([?]string{filepath.dir(t.bin), t.config, filepath.dir(t.desktop), filepath.dir(t.icon)}) {
         if err := os.make_directory_all(dir); err != nil && !os.is_dir(dir) {
             return false, fmt.tprintf("install: cannot create %s (%v)", dir, err)
         }
@@ -65,6 +70,7 @@ install_run :: proc(t: Install_Target, exe: string) -> (ok: bool, msg: string) {
         {filepath.join({t.config, "binds.conf"}, tmp) or_else "", DEFAULT_BINDS},
         {filepath.join({t.config, "config.conf"}, tmp) or_else "", DEFAULT_CONFIG},
         {t.desktop, exec},
+        {t.icon, ICON_SRC},
     }
     for f in files {
         dst := f[0]
@@ -82,13 +88,13 @@ install_run :: proc(t: Install_Target, exe: string) -> (ok: bool, msg: string) {
     return true, strings.to_string(b)
 }
 
-// Everything: the binary, the launcher entry and the whole config dir, your edits with it.
+// Everything: the binary, the launcher entry, the icon and the whole config dir, your edits with it.
 install_remove :: proc(t: Install_Target) -> (ok: bool, msg: string) {
     if t.bin == "" {
         return false, "uninstall: no $HOME, so nothing could have been installed"
     }
     b := strings.builder_make(context.temp_allocator)
-    for path in ([?]string{t.config, t.desktop, t.bin}) {
+    for path in ([?]string{t.config, t.desktop, t.icon, t.bin}) {
         if !os.exists(path) {
             continue
         }

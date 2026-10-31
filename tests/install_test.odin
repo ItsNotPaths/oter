@@ -25,6 +25,7 @@ setup :: proc(t: ^testing.T) -> (root, exe: string, tg: oter.Install_Target) {
         config  = strings.clone(path(root, ".config", "oter")),
         bin     = strings.clone(path(root, ".local", "bin", "oter")),
         desktop = strings.clone(path(root, ".local", "share", "applications", "oter.desktop")),
+        icon    = strings.clone(path(root, ".local", "share", "icons", "oter.svg")),
     }
     return
 }
@@ -37,7 +38,7 @@ teardown :: proc(root: string, tg: ^oter.Install_Target) {
 }
 
 @(test)
-an_install_lands_binary_config_and_launcher :: proc(t: ^testing.T) {
+an_install_lands_binary_config_launcher_and_icon :: proc(t: ^testing.T) {
     root, exe, tg := setup(t)
     defer teardown(root, &tg)
 
@@ -49,6 +50,7 @@ an_install_lands_binary_config_and_launcher :: proc(t: ^testing.T) {
     testing.expect(t, os.exists(path(tg.config, "config.conf")))
     entry, _ := os.read_entire_file(tg.desktop, context.temp_allocator)
     testing.expect(t, strings.contains(string(entry), strings.concatenate({"Exec=", tg.bin}, context.temp_allocator)))
+    testing.expect(t, os.exists(tg.icon))
 }
 
 // An uninstall you have to finish by hand is not one.
@@ -61,7 +63,7 @@ an_uninstall_leaves_nothing :: proc(t: ^testing.T) {
 
     ok, _ := oter.install_remove(tg)
     testing.expect(t, ok)
-    for p in ([]string{tg.config, tg.bin, tg.desktop}) {
+    for p in ([]string{tg.config, tg.bin, tg.desktop, tg.icon}) {
         testing.expect(t, !os.exists(p), p)
     }
 }

@@ -5,6 +5,7 @@ GenericName=File Manager
 Comment=Panes, a command line, and a shell
 Exec=oter
 TryExec=oter
+Icon=oter
 Terminal=false
 Categories=System;FileManager;
 Keywords=files;folders;browser;
