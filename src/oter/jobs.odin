@@ -16,7 +16,7 @@ Send :: struct {
 }
 
 send_start :: proc(a: ^App, srcs: []string, src_dir, dst_dir: string, move: bool) {
-    append(&a.sends, Send{fsop.start(srcs, dst_dir, move), strings.clone(src_dir), 0})
+    append(&a.sends, Send{fsop.start(srcs, dst_dir, move, move ? a.config.move[:] : a.config.copy[:]), strings.clone(src_dir), 0})
 }
 
 // Each frame: re-list the panes an item landed in; finish what the worker finished.

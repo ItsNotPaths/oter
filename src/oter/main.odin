@@ -28,6 +28,8 @@ App :: struct {
     painter: gfx.Painter,
     frame:   Frame,
     theme:   gfx.Theme,
+    home:    Home,
+    config:  Config,
     panes:   [dynamic]pane.Pane,
     places:  [dynamic]Place,
     place:   int, // the sidebar cursor
@@ -59,6 +61,9 @@ gl_loader :: proc(p: rawptr, name: cstring) {
 }
 
 main :: proc() {
+    if handled, ok := install_cli(os.args[1:]); handled {
+        os.exit(ok ? 0 : 1)
+    }
     sdl.SetHint(sdl.HINT_APP_ID, APP_ID)
     if !sdl.Init({.VIDEO}) {
         fmt.eprintfln("SDL_Init failed: %s", sdl.GetError())
@@ -99,7 +104,7 @@ main :: proc() {
 
     fsop.wake_hook = push_wake
 
-    a := App{window = window, theme = gfx.DEFAULT_THEME, running = true}
+    a := App{window = window, home = home_resolve(), running = true}
     if !gfx.painter_init(&a.painter, atlas) {
         os.exit(1)
     }
@@ -110,7 +115,10 @@ main :: proc() {
     defer delete(a.line.text)
     defer cl.destroy(&a.chain)
     defer input.binds_destroy(&a.binds)
+    defer home_destroy(&a.home)
+    defer config_destroy(&a.config)
     binds_load(&a)
+    config_load(&a)
     places_load(&a)
     defer {
         places_clear(&a.places)
@@ -121,8 +129,7 @@ main :: proc() {
 
     start := os.get_working_directory(context.allocator) or_else "/"
     defer delete(start)
-    // (hole config :tags config :sev gap) pane count and theme are fixed; no config.conf.
-    for _ in 0 ..< 2 {
+    for _ in 0 ..< a.config.panes {
         p: pane.Pane
         pane.open(&p, start)
         append(&a.panes, p)

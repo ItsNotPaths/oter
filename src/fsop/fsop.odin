@@ -9,16 +9,6 @@ import "core:sync"
 import "core:thread"
 import "oket:cl"
 
-// Plain sh lines, best first; the first whose program is installed runs.
-// `$o_src` is the item, `$o_dir` the target dir, `$o_dst` the item's path in it.
-@(rodata)
-COPY_LINES := [?]string{
-    "rsync -a --ignore-existing --info=progress2 -- $o_src $o_dir/",
-    "cp -aT --update=none -- $o_src $o_dst",
-}
-@(rodata)
-MOVE_LINES := [?]string{"mv -T --update=none -- $o_src $o_dst"}
-
 // Wakes the host's loop from the worker when an item or the job ends. The host sets it once.
 wake_hook := proc() {}
 
@@ -32,6 +22,7 @@ Item :: struct {
 Job :: struct {
     dst_dir:  string,
     move:     bool,
+    lines:    []string, // the host's; sh lines, best first, the first whose program is installed runs
     items:    []Item,
     done:     int,
     skipped:  int,    // name clash in dst_dir; never overwrites
@@ -39,10 +30,13 @@ Job :: struct {
     finished: bool,   // atomic; the fields above are final once set
 }
 
-new_job :: proc(srcs: []string, dst_dir: string, move: bool) -> ^Job {
+// `lines` must outlive the job. In them `$o_src` is the item, `$o_dir` the target dir,
+// `$o_dst` the item's path in it.
+new_job :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string) -> ^Job {
     j := new(Job)
     j.dst_dir = strings.clone(dst_dir)
     j.move = move
+    j.lines = lines
     j.items = make([]Item, len(srcs))
     for src, i in srcs {
         j.items[i].src = strings.clone(src)
@@ -62,8 +56,8 @@ destroy :: proc(j: ^Job) {
 }
 
 // Runs `send` on a worker thread. Free with `destroy` once `is_finished`.
-start :: proc(srcs: []string, dst_dir: string, move: bool) -> ^Job {
-    j := new_job(srcs, dst_dir, move)
+start :: proc(srcs: []string, dst_dir: string, move: bool, lines: []string) -> ^Job {
+    j := new_job(srcs, dst_dir, move, lines)
     ctx := runtime.default_context() // own temp allocator; the main loop frees its own each frame
     ctx.allocator = context.allocator
     thread.create_and_start_with_poly_data(j, send, ctx, self_cleanup = true)
@@ -78,7 +72,7 @@ is_finished :: proc(j: ^Job) -> bool {
 send :: proc(j: ^Job) {
     defer wake_hook() // after `finished`: defers run last first
     defer sync.atomic_store(&j.finished, true)
-    line, found := pick(j.move ? MOVE_LINES[:] : COPY_LINES[:])
+    line, found := pick(j.lines)
     if !found {
         j.err = strings.clone(j.move ? "no move tool installed" : "no copy tool installed")
         return

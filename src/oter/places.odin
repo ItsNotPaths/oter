@@ -2,7 +2,6 @@ package oter
 
 import "core:fmt"
 import "core:os"
-import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import "oket:cl"
@@ -17,17 +16,10 @@ Place :: struct {
     ok:   bool, // an existing dir
 }
 
-// ~/.config/oter/places. A missing file is written from the defaults.
 places_load :: proc(a: ^App) {
-    a.places_file = strings.clone(config_path("places"))
-    text := DEFAULT_PLACES
-    if data, err := os.read_entire_file(a.places_file, context.temp_allocator); err == nil {
-        text = string(data)
-    } else {
-        os.make_directory_all(filepath.dir(a.places_file))
-        _ = os.write_entire_file(a.places_file, DEFAULT_PLACES)
-    }
-    places_parse(&a.places, text)
+    text, path, found := conf_read(a, "places", DEFAULT_PLACES)
+    a.places_file = strings.clone(path)
+    places_parse(&a.places, found ? text : DEFAULT_PLACES)
 }
 
 places_parse :: proc(places: ^[dynamic]Place, text: string) {

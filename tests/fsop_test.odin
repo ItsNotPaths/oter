@@ -7,6 +7,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import "oter:fsop"
+import "oter:oter"
 
 @(private = "file")
 join :: proc(parts: ..string) -> string {
@@ -36,9 +37,18 @@ make_dirs :: proc(t: ^testing.T) -> (root, src, dst: string) {
     return
 }
 
+// The shipped copy and move lines.
+@(private = "file")
+defaults :: proc() -> (cfg: oter.Config) {
+    delete(oter.config_parse(&cfg, oter.DEFAULT_CONFIG, "defaults"))
+    return
+}
+
 @(private = "file")
 run :: proc(srcs: []string, dst: string, move: bool) -> ^fsop.Job {
-    j := fsop.new_job(srcs, dst, move)
+    cfg := defaults()
+    defer oter.config_destroy(&cfg)
+    j := fsop.new_job(srcs, dst, move, move ? cfg.move[:] : cfg.copy[:])
     fsop.send(j)
     return j
 }
@@ -122,7 +132,9 @@ start_finishes_on_worker :: proc(t: ^testing.T) {
     root, src, dst := make_dirs(t)
     defer {os.remove_all(root); delete(root)}
 
-    j := fsop.start({join(src, "a.txt")}, dst, false)
+    cfg := defaults()
+    defer oter.config_destroy(&cfg)
+    j := fsop.start({join(src, "a.txt")}, dst, false, cfg.copy[:])
     defer fsop.destroy(j)
     deadline := time.tick_now()
     for !fsop.is_finished(j) && time.tick_since(deadline) < 5 * time.Second {
@@ -171,7 +183,9 @@ worker_wakes_the_host_once_finished :: proc(t: ^testing.T) {
         }
     }
     defer fsop.wake_hook = proc() {}
-    j := fsop.new_job({join(src, "a.txt")}, dst, false)
+    cfg := defaults()
+    defer oter.config_destroy(&cfg)
+    j := fsop.new_job({join(src, "a.txt")}, dst, false, cfg.copy[:])
     defer fsop.destroy(j)
     sync.atomic_store(&watched, j)
     thread_start(j)

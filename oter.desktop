@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=oter
+GenericName=File Manager
+Comment=Panes, a command line, and a shell
+Exec=oter
+TryExec=oter
+Terminal=false
+Categories=System;FileManager;
+Keywords=files;folders;browser;
+StartupWMClass=oter

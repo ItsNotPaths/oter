@@ -28,6 +28,7 @@ two_panes :: proc(t: ^testing.T, a: ^oter.App) -> (root: string) {
         pane.open(&p, path(root, side))
         append(&a.panes, p)
     }
+    oter.config_load(a) // no home: the defaults
     return
 }
 
@@ -48,6 +49,7 @@ teardown :: proc(a: ^oter.App, root: string) {
     delete(a.panes)
     delete(a.sends)
     delete(a.status)
+    oter.config_destroy(&a.config)
     os.remove_all(root)
     delete(root)
 }

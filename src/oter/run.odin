@@ -44,7 +44,16 @@ chain_pump :: proc(a: ^App) {
             cl.done(ch, fail(a, fmt.tprintf("no $o_%s here", missing)))
             continue
         }
-        if !step.shell {
+        shell := step.shell
+        if !shell && cl.first_field(cmd) == "oter" {
+            line, ok := oter_line(a, strings.trim_space(cmd[len("oter"):]))
+            if !ok {
+                cl.done(ch, false)
+                continue
+            }
+            cmd, shell = line, true
+        }
+        if !shell {
             filled_step := step
             filled_step.text = cmd
             cl.done(ch, run_builtin(a, filled_step))
