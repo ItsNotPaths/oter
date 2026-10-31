@@ -42,7 +42,6 @@ done
 
 echo ""
 echo "==> hatchzip (archives as folders; Rust, built with cargo)"
-# (hole hatchzip-ffi :tags deps :sev gap) source only; no hz_ C ABI crate or Odin binding yet.
 HATCHZIP_REV="50fa69c1e8b73f53d7b0cc592c303c66fd7ad8c5"
 HATCHZIP_SRC="$VENDOR/hatchzip"
 if [ ! -d "$HATCHZIP_SRC/.git" ]; then

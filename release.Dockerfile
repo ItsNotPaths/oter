@@ -29,6 +29,7 @@ RUN mkdir -p /opt/odin \
         | tar xz --strip-components=1 -C /opt/odin
 
 ENV PATH="/opt/odin:${PATH}"
+# (hole release-rust :tags deps :sev gap) no cargo here, so build.sh fails at the hz crate.
 # /work is a host mount; git refuses vendor/ clones in it without this.
 RUN git config --global --add safe.directory '*'
 WORKDIR /work

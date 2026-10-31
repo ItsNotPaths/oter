@@ -1,0 +1,16 @@
+[package]
+name = "hz"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+hatchzip-core = { path = "../vendor/hatchzip/crates/core" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"

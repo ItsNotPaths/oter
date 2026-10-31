@@ -8,6 +8,8 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$DIR/build"
 FLAGS=(-collection:oket="$DIR/vendor/oket/src" -extra-linker-flags:"-L$DIR/vendor/sdl3")
 
+cargo build -q --release --manifest-path "$DIR/hz/Cargo.toml" # libhz.a: hatchzip's listing
+
 case "${1:-debug}" in
     debug)   odin build "$DIR/src/oter" -out:"$DIR/build/oter" -debug "${FLAGS[@]}" ;;
     release) odin build "$DIR/src/oter" -out:"$DIR/build/oter" -o:speed -collection:oket="$DIR/vendor/oket/src" -extra-linker-flags:"-L$DIR/vendor/sdl3 -Wl,--gc-sections" ;;
