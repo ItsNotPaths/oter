@@ -22,9 +22,23 @@ cl_text :: proc(a: ^App, text: cstring) {
     if sdl.GetModState() & (sdl.KMOD_ALT | sdl.KMOD_CTRL) != {} {
         return
     }
-    s := string(text)
+    cl_insert(a, string(text))
+}
+
+cl_insert :: proc(a: ^App, s: string) {
     inject_at(&a.line.text, a.line.cursor, ..transmute([]u8)s)
     a.line.cursor += len(s)
+}
+
+// ctrl+v: the system clipboard on one line. Line breaks become spaces; a trailing one goes.
+@(private = "file")
+cl_paste :: proc(a: ^App) {
+    ctext := sdl.GetClipboardText() // owned; never nil
+    defer sdl.free(rawptr(ctext))
+    text := strings.trim_right(string(cstring(ctext)), "\r\n")
+    flat, _ := strings.replace_all(text, "\r\n", " ", context.temp_allocator)
+    flat, _ = strings.replace_all(flat, "\n", " ", context.temp_allocator)
+    cl_insert(a, flat)
 }
 
 // Keys while the line is open. Every key is the line's; none reach the panes.
@@ -62,5 +76,9 @@ cl_key :: proc(a: ^App, k: sdl.Keycode) {
         c.cursor = 0
     case sdl.K_END:
         c.cursor = len(c.text)
+    case sdl.K_V:
+        if sdl.GetModState() & sdl.KMOD_CTRL != {} {
+            cl_paste(a)
+        }
     }
 }
