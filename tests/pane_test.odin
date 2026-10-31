@@ -105,16 +105,86 @@ selection_is_marks_else_cursor :: proc(t: ^testing.T) {
     testing.expect_value(t, filepath.base(sel[0]), "Alpha")
 
     pane.move(&p, 2)
-    pane.toggle_mark(&p) // A.txt, steps to b.txt
+    pane.toggle_mark(&p) // A.txt
+    pane.move(&p, 1)
     pane.toggle_mark(&p) // b.txt
     sel = pane.selection(&p)
     testing.expect_value(t, len(sel), 2)
     testing.expect_value(t, sel[0], filepath.join({root, "A.txt"}, context.temp_allocator) or_else "")
     testing.expect_value(t, filepath.base(sel[1]), "b.txt")
 
-    pane.move(&p, -1)
     pane.toggle_mark(&p) // unmark b.txt
     testing.expect_value(t, len(pane.selection(&p)), 1)
+}
+
+// Yank in one folder, go into another, yank more: the selection holds both.
+@(test)
+marks_survive_a_folder_change :: proc(t: ^testing.T) {
+    root := make_tree(t)
+    defer {os.remove_all(root); delete(root)}
+    inner, _ := filepath.join({root, "zeta", "c.txt"}, context.temp_allocator)
+    testing.expect(t, os.write_entire_file(inner, []u8{}) == nil)
+
+    p: pane.Pane
+    defer pane.destroy(&p)
+    pane.open(&p, root) // Alpha, zeta, A.txt, b.txt
+    pane.move(&p, 2)
+    pane.toggle_mark(&p) // A.txt
+    pane.move(&p, -1)
+    pane.enter(&p) // zeta: c.txt
+    pane.toggle_mark(&p)
+
+    sel := pane.selection(&p)
+    testing.expect_value(t, len(sel), 2)
+    testing.expect_value(t, filepath.base(sel[0]), "A.txt")
+    testing.expect_value(t, sel[1], inner)
+
+    pane.up(&p)
+    testing.expect(t, pane.is_marked(&p, p.entries[2]), "A.txt lost its mark on the way back")
+}
+
+@(test)
+unmark_a_dir_drops_only_its_marks :: proc(t: ^testing.T) {
+    root := make_tree(t)
+    defer {os.remove_all(root); delete(root)}
+    inner, _ := filepath.join({root, "zeta", "c.txt"}, context.temp_allocator)
+    testing.expect(t, os.write_entire_file(inner, []u8{}) == nil)
+
+    p: pane.Pane
+    defer pane.destroy(&p)
+    pane.open(&p, root)
+    pane.move(&p, 2)
+    pane.toggle_mark(&p) // A.txt
+    pane.open(&p, filepath.dir(inner))
+    pane.toggle_mark(&p) // c.txt
+
+    pane.unmark(&p, p.dir)
+    sel := pane.selection(&p)
+    testing.expect_value(t, len(p.marks), 1)
+    testing.expect_value(t, filepath.base(sel[0]), "A.txt")
+
+    pane.unmark(&p)
+    testing.expect_value(t, len(p.marks), 0)
+}
+
+// A deleted or renamed file stops being yanked once the pane re-lists.
+@(test)
+relist_drops_marks_on_gone_paths :: proc(t: ^testing.T) {
+    root := make_tree(t)
+    defer {os.remove_all(root); delete(root)}
+
+    p: pane.Pane
+    defer pane.destroy(&p)
+    pane.open(&p, root)
+    pane.move(&p, 2)
+    pane.toggle_mark(&p) // A.txt
+    pane.move(&p, 1)
+    pane.toggle_mark(&p) // b.txt
+    testing.expect(t, os.remove(pane.path_of(&p, "b.txt")) == nil)
+
+    pane.relist(&p)
+    testing.expect_value(t, len(p.marks), 1)
+    testing.expect_value(t, filepath.base(p.marks[0]), "A.txt")
 }
 
 @(test)

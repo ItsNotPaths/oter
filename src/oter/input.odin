@@ -23,6 +23,10 @@ handle :: proc(a: ^App, ev: sdl.Event) {
         case .Panes, .Sidebar:
             bind_run(a, ev.key)
         }
+    case .KEY_UP:
+        if input.Code(ev.key.scancode) == a.paint_key {
+            a.paint, a.paint_key = nil, 0
+        }
     case .TEXT_INPUT:
         #partial switch a.mode {
         case .Term:

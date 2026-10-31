@@ -161,7 +161,7 @@ or_in_a_line_is_plain_sh :: proc(t: ^testing.T) {
     defer {os.remove_all(root); delete(root)}
     out := join(dst, "out")
 
-    _, ok := fsop.run_line("ls /oter-no-such-path 2>/dev/null || touch $o_dst", {"", dst, out})
+    _, ok := fsop.run_line("ls /oter-no-such-path 2>/dev/null || touch $o_dst", {"", dst, out, ""})
     testing.expect(t, ok)
     testing.expect(t, os.exists(out))
 }

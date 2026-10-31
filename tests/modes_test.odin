@@ -37,7 +37,7 @@ the_sidebar_opens_no_line_or_tray :: proc(t: ^testing.T) {
     one_pane(&a, .Sidebar)
     defer teardown(&a)
 
-    oter.run_line(&a, ":line")
+    oter.run_line(&a, ":stage")
     testing.expect_value(t, a.mode, oter.Mode.Sidebar)
     oter.run_line(&a, ":drawer open")
     testing.expect_value(t, a.mode, oter.Mode.Sidebar)

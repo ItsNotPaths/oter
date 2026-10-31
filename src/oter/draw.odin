@@ -1,6 +1,7 @@
 package oter
 
 import "core:fmt"
+import "core:path/filepath"
 import "core:strings"
 import "core:unicode/utf8"
 import sdl "vendor:sdl3"
@@ -88,7 +89,7 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
     g := &r.grid
     gfx.grid_clear(g, th[.Fg], bg)
     cols, rows := region_cells(a, r)
-    header(g, cols, p.dir, active, th)
+    header(g, cols, p.dir, active, th, marks_note(p))
 
     rows -= 1
     if p.err != nil {
@@ -109,7 +110,7 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
             row_bg = gfx.opaque(active ? th[.Dim] : gfx.shade(th[.Dim], 50))
             row_fill(g, row + 1, fg, row_bg)
         }
-        if e.marked {
+        if pane.is_marked(p, e) {
             gfx.grid_put(g, 0, row + 1, gfx.Cell{'▎', th[.Accent], row_bg, {}, 0})
         }
         write_clipped(g, 1, row + 1, cols - 1, name, fg, row_bg, {}) // col 0 is the mark gutter
@@ -128,13 +129,28 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
 }
 
 // A region's title row; reversed when it has focus.
-header :: proc(g: ^gfx.Grid, cols: int, title: string, focused: bool, th: gfx.Theme) {
+header :: proc(g: ^gfx.Grid, cols: int, title: string, focused: bool, th: gfx.Theme, right := "") {
     bg := gfx.opaque(th[.Bg])
     attrs := focused ? gfx.Attrs{.Reverse} : gfx.Attrs{}
     for col in 0 ..< g.cols {
         gfx.grid_put(g, col, 0, gfx.Cell{' ', th[.Accent], bg, attrs, 0})
     }
-    write_clipped(g, 0, 0, cols, title, th[.Accent], bg, attrs)
+    note := strings.rune_count(right)
+    write_clipped(g, 0, 0, note > 0 ? cols - note - 1 : cols, title, th[.Accent], bg, attrs)
+    write_clipped(g, max(cols - note, 0), 0, note, right, th[.Accent], bg, attrs)
+}
+
+// `5 yanked · 2 here`, so marks out of sight still show.
+@(private = "file")
+marks_note :: proc(p: ^pane.Pane) -> string {
+    if len(p.marks) == 0 {
+        return ""
+    }
+    here := 0
+    for m in p.marks {
+        here += int(filepath.dir(m) == p.dir)
+    }
+    return fmt.tprintf("%d yanked · %d here", len(p.marks), here)
 }
 
 row_fill :: proc(g: ^gfx.Grid, y: int, fg: [3]f32, bg: gfx.Rgba) {

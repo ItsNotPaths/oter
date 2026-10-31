@@ -14,8 +14,8 @@ SECTION_NAMES := [?]string{"global", "panes", "sidebar"}
 // Every default row, in binds.conf's own words. The file is written from these on first start.
 DEFAULT_BINDS :: `[global]
 ctrl+q      = :quit
-alt+;       = :line :
-alt+c       = :line
+alt+;       = :stage :
+alt+c       = :stage
 alt+up      = :drawer open
 alt+down    = :drawer close
 tab         = :sidebar
@@ -31,7 +31,12 @@ enter       = :enter
 right       = :enter
 backspace   = :parent
 left        = :parent
-y           = :mark
+space       = :mark
+esc         = :unmark
+shift+esc   = :unmark $o_dir
+del         = :stage :sel | xargs -d '\n' rm -rf --
+alt+r       = :stage mv -- $o_name
+alt+n       = :stage mkdir --
 e           = ${EDITOR:-vi} $o_src
 alt+left    = :focus @-1
 alt+right   = :focus @+1
@@ -110,6 +115,8 @@ bind_run :: proc(a: ^App, ev: sdl.KeyboardEvent) -> bool {
     if !ok {
         return false
     }
+    a.key = {code, ev.repeat}
     run_line(a, b.line)
+    a.key = {}
     return true
 }

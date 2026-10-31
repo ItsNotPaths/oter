@@ -82,7 +82,7 @@ send :: proc(j: ^Job) {
         if _, err := os.lstat(dst, context.temp_allocator); err == nil {
             j.skipped += 1
         } else {
-            msg, ok := run_line(line, {it.src, j.dst_dir, dst})
+            msg, ok := run_line(line, {it.src, j.dst_dir, dst, it.name})
             if !ok {
                 j.err = strings.clone(msg)
                 return

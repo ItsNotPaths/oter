@@ -35,9 +35,17 @@ writes defaults.
 
 ## Getting around
 
-Panes sit side by side. `y` marks, `shift+left` / `shift+right` copies the marks (or the cursor
-item) to the pane on that side, and `ctrl+left` / `ctrl+right` moves them. `alt+left` /
-`alt+right` changes focus. `tab` goes to the places sidebar, and `esc` comes back.
+Panes sit side by side. `alt+left` / `alt+right` changes focus. `tab` goes to the places
+sidebar, and `esc` comes back.
+
+`space` yanks the item under the cursor; hold it and press `up` / `down` to yank a run. Yanks
+stay when you change folder, so you can gather them from several, and the pane's header counts
+them. `esc` drops them all, `shift+esc` only the ones in this folder.
+
+`shift+left` / `shift+right` copies the yanks (or the cursor item) to the pane on that side, and
+`ctrl+left` / `ctrl+right` moves them. `del` deletes, `alt+r` renames and `alt+n` makes a
+folder: each puts its command in the command line for you to finish, and nothing runs until
+`enter`.
 
 `alt+;` opens the command line. `alt+up` raises the shell drawer, `alt+down` lowers it.
 

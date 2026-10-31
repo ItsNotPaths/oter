@@ -46,6 +46,12 @@ App :: struct {
     drawer_before: Drawer, // what a TUI's full drawer goes back to
     status:  string, // owned; the CL bar's text until the next one replaces it
     status_err: bool,
+    key:     struct {
+        code:   input.Code, // the key whose bind is running; 0 outside one
+        repeat: bool,
+    },
+    paint:     Maybe(bool), // while the key that ran `:mark` is held, up/down set this mark
+    paint_key: input.Code,
     running: bool,
 }
 

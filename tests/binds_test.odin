@@ -48,7 +48,7 @@ a_file_row_replaces_the_default :: proc(t: ^testing.T) {
     testing.expect(t, ok)
     testing.expect_value(t, line, ":sel | :copy @+1")
     line, _ = line_for(binds[:], "alt+;", PANES) // untouched defaults stay
-    testing.expect_value(t, line, ":line :")
+    testing.expect_value(t, line, ":stage :")
 }
 
 @(test)

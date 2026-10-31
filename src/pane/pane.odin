@@ -8,7 +8,6 @@ import "core:strings"
 Entry :: struct {
     name:   string,
     is_dir: bool,
-    marked: bool,
 }
 
 Pane :: struct {
@@ -17,6 +16,7 @@ Pane :: struct {
     cursor:  int,
     top:     int, // first visible row
     err:     os.Error,
+    marks:   [dynamic]string, // owned full paths, from any dir, in mark order
 }
 
 // Dirs first, then by name, case-insensitive.
@@ -55,8 +55,14 @@ open :: proc(p: ^Pane, dir: string, select := "") {
     }
 }
 
-// Lists the same dir again, cursor kept by name. Marks are dropped.
+// Lists the same dir again, cursor kept by name. Marks on paths that are gone are dropped.
 relist :: proc(p: ^Pane) {
+    #reverse for m, i in p.marks {
+        if _, err := os.lstat(m, context.temp_allocator); err != nil {
+            delete(m)
+            ordered_remove(&p.marks, i)
+        }
+    }
     name := ""
     if e, ok := current(p); ok {
         name = strings.clone(e.name, context.temp_allocator)
@@ -67,6 +73,8 @@ relist :: proc(p: ^Pane) {
 destroy :: proc(p: ^Pane) {
     clear_entries(p)
     delete(p.entries)
+    unmark(p)
+    delete(p.marks)
     delete(p.dir)
     p^ = {}
 }
@@ -86,33 +94,66 @@ current :: proc(p: ^Pane) -> (Entry, bool) {
     return p.entries[p.cursor], true
 }
 
-// Flips the mark on the cursor item and steps down, so repeats mark a run.
-toggle_mark :: proc(p: ^Pane) {
-    if p.cursor < 0 || p.cursor >= len(p.entries) {
+// Temp-allocated.
+path_of :: proc(p: ^Pane, name: string) -> string {
+    return filepath.join({p.dir, name}, context.temp_allocator) or_else ""
+}
+
+mark_index :: proc(p: ^Pane, path: string) -> int {
+    for m, i in p.marks {
+        if m == path {
+            return i
+        }
+    }
+    return -1
+}
+
+is_marked :: proc(p: ^Pane, e: Entry) -> bool {
+    return mark_index(p, path_of(p, e.name)) >= 0
+}
+
+// Marks or unmarks the cursor item.
+mark_cursor :: proc(p: ^Pane, on: bool) {
+    e, ok := current(p)
+    if !ok {
         return
     }
-    p.entries[p.cursor].marked = !p.entries[p.cursor].marked
-    move(p, +1)
-}
-
-clear_marks :: proc(p: ^Pane) {
-    for &e in p.entries {
-        e.marked = false
+    path := path_of(p, e.name)
+    i := mark_index(p, path)
+    if on && i < 0 {
+        append(&p.marks, strings.clone(path))
+    } else if !on && i >= 0 {
+        delete(p.marks[i])
+        ordered_remove(&p.marks, i)
     }
 }
 
-// Full paths of the marked items, else of the cursor item.
+// Flips the mark on the cursor item. Returns its new state.
+toggle_mark :: proc(p: ^Pane) -> (on: bool) {
+    e := current(p) or_return
+    on = !is_marked(p, e)
+    mark_cursor(p, on)
+    return
+}
+
+// Drops every mark, or with `dir` only those directly in it.
+unmark :: proc(p: ^Pane, dir := "") {
+    #reverse for m, i in p.marks {
+        if dir == "" || filepath.dir(m) == dir {
+            delete(m)
+            ordered_remove(&p.marks, i)
+        }
+    }
+}
+
+// The marks, in any dir, else the cursor item. Full paths.
 selection :: proc(p: ^Pane, alloc := context.temp_allocator) -> []string {
-    out := make([dynamic]string, alloc)
-    for e in p.entries {
-        if e.marked {
-            append(&out, filepath.join({p.dir, e.name}, alloc) or_else "")
-        }
+    if len(p.marks) > 0 {
+        return slice.clone(p.marks[:], alloc)
     }
-    if len(out) == 0 {
-        if e, ok := current(p); ok {
-            append(&out, filepath.join({p.dir, e.name}, alloc) or_else "")
-        }
+    out := make([dynamic]string, alloc)
+    if e, ok := current(p); ok {
+        append(&out, filepath.join({p.dir, e.name}, alloc) or_else "")
     }
     return out[:]
 }

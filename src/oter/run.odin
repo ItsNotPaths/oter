@@ -15,7 +15,7 @@ run_line :: proc(a: ^App, line: string) {
         return
     }
     cl.parse(ch, line, a, proc(a: ^App, name: string) -> string {return ""}, proc(a: ^App, name: string) -> bool {
-        return name == "line" // `:line <text>` takes the rest raw, operators and all
+        return name == "stage" // `:stage <text>` takes the rest raw, operators and all
     })
     p := &a.panes[a.active]
     vars: cl.Vars
@@ -24,7 +24,10 @@ run_line :: proc(a: ^App, line: string) {
             vars[var("src")] = path
         }
     } else if e, ok := pane.current(p); ok {
-        vars[var("src")] = filepath.join({p.dir, e.name}, context.temp_allocator) or_else ""
+        vars[var("src")] = pane.path_of(p, e.name)
+    }
+    if src, ok := vars[var("src")].?; ok {
+        vars[var("name")] = filepath.base(src)
     }
     vars[var("dir")] = p.dir
     cl.vars_set(ch, vars)
@@ -97,7 +100,7 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         return builtin_send(a, step, args, name == "move")
     case "quit":
         a.running = false
-    case "line":
+    case "stage":
         if a.mode == .Panes {
             cl_open(a, args)
         }
@@ -130,10 +133,11 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         case:
             return fail(a, ":drawer takes open or close")
         }
-    case "up":
-        pane.move(p, -1)
-    case "down":
-        pane.move(p, +1)
+    case "up", "down":
+        pane.move(p, name == "up" ? -1 : +1)
+        if on, painting := a.paint.?; painting {
+            pane.mark_cursor(p, on)
+        }
     case "pgup":
         pane.move(p, -max(list_rows(a) - 1, 1))
     case "pgdn":
@@ -147,7 +151,16 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "parent":
         pane.up(p)
     case "mark":
-        pane.toggle_mark(p)
+        if a.key.repeat {
+            return true // holding the key paints, it does not flicker
+        }
+        on := pane.toggle_mark(p)
+        if a.key.code != 0 {
+            a.paint, a.paint_key = on, a.key.code
+        }
+    case "unmark":
+        _, dir := cl.first_arg(args)
+        pane.unmark(p, dir)
     case "focus", "swap":
         i, ok := pane_target(a, args)
         if !ok {
@@ -214,7 +227,7 @@ builtin_send :: proc(a: ^App, step: cl.Step, args: string, move: bool) -> bool {
         return fail(a, "same dir on both sides")
     }
     send_start(a, srcs, from.dir, dst, move)
-    pane.clear_marks(from)
+    pane.unmark(from)
     return true
 }
 
@@ -265,6 +278,8 @@ run_filter_step :: proc(a: ^App, step: cl.Step, cmd: string) -> bool {
     }
     if step.feeds {
         cl.feed_set(&a.chain, out)
+    } else {
+        pane.relist(&a.panes[a.active]) // the pipe's end may have changed what is here
     }
     return true
 }

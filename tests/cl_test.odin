@@ -59,8 +59,9 @@ sel_through_a_filter_copies_only_matches :: proc(t: ^testing.T) {
     a: oter.App
     root := two_panes(t, &a)
     defer teardown(&a, root)
-    for &e in a.panes[0].entries {
-        e.marked = true
+    for _ in a.panes[0].entries {
+        pane.toggle_mark(&a.panes[0])
+        pane.move(&a.panes[0], 1)
     }
 
     oter.run_line(&a, ":sel | grep jpg | :copy @+1")
@@ -113,4 +114,45 @@ an_unknown_builtin_reports :: proc(t: ^testing.T) {
 
     oter.run_line(&a, ":nope")
     testing.expect(t, a.status_err)
+}
+
+// Space down marks, held down paints each row moved onto, a key repeat changes nothing.
+@(test)
+holding_the_mark_key_paints_a_run :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+    p := &a.panes[0] // a.jpg, b.txt, c.jpg
+
+    a.key = {code = 44}
+    oter.run_line(&a, ":mark")
+    a.key.repeat = true
+    oter.run_line(&a, ":mark")
+    a.key = {}
+    oter.run_line(&a, ":down")
+    oter.run_line(&a, ":down")
+    testing.expect_value(t, len(p.marks), 3)
+
+    a.paint = nil // the key came up
+    oter.run_line(&a, ":up")
+    testing.expect_value(t, len(p.marks), 3)
+}
+
+// The staged delete: every mark goes, the pane re-lists, the yank empties.
+@(test)
+deleting_the_selection_removes_the_marked_files :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+    p := &a.panes[0] // a.jpg, b.txt, c.jpg
+    pane.toggle_mark(p)
+    pane.move(p, 2)
+    pane.toggle_mark(p)
+
+    oter.run_line(&a, ":sel | xargs -d '\\n' rm -rf --")
+    testing.expect(t, !os.exists(path(root, "left", "a.jpg")))
+    testing.expect(t, !os.exists(path(root, "left", "c.jpg")))
+    testing.expect(t, os.exists(path(root, "left", "b.txt")))
+    testing.expect_value(t, len(p.entries), 1)
+    testing.expect_value(t, len(p.marks), 0)
 }
