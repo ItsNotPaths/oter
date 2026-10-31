@@ -107,3 +107,9 @@ item; nothing is overwritten.
 
 Needs Odin and a C compiler. `build/oter` is portable, so it never touches an installed copy's
 config.
+
+## Special thanks
+
+**[Double Commander](https://github.com/doublecmd/doublecmd)**, the commander oter grew out of.
+
+**[hatchzip](https://github.com/xevrion/hatchzip)**, which handles archives.
