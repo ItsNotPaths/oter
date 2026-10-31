@@ -10,7 +10,7 @@ FLAGS=(-collection:oket="$DIR/vendor/oket/src" -extra-linker-flags:"-L$DIR/vendo
 
 case "${1:-debug}" in
     debug)   odin build "$DIR/src/oter" -out:"$DIR/build/oter" -debug "${FLAGS[@]}" ;;
-    release) odin build "$DIR/src/oter" -out:"$DIR/build/oter" -o:speed "${FLAGS[@]}" ;;
+    release) odin build "$DIR/src/oter" -out:"$DIR/build/oter" -o:speed -collection:oket="$DIR/vendor/oket/src" -extra-linker-flags:"-L$DIR/vendor/sdl3 -Wl,--gc-sections" ;;
     test)    odin test "$DIR/tests" -collection:oter="$DIR/src" "${FLAGS[@]}" ;;
     *)       echo "usage: $0 [debug|release|test]" >&2; exit 2 ;;
 esac
