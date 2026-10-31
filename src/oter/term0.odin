@@ -182,6 +182,9 @@ term_key :: proc(a: ^App, ev: sdl.KeyboardEvent) {
         // Ctrl+letter follows the layout's letter; a printable arrives as TEXT_INPUT.
         if mods == {.Ctrl} || mods == {.Ctrl, .Shift} {
             if l := layout_name(code); len(l) == 1 && l[0] >= 'a' && l[0] <= 'z' {
+                if l[0] == 'c' && filter_stop(a) {
+                    return
+                }
                 pty.terminal_input_ctrl(&a.term0, rune(l[0]))
             }
         }

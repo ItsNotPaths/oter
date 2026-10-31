@@ -204,3 +204,22 @@ a_slow_filter_does_not_block :: proc(t: ^testing.T) {
     testing.expect(t, !a.chain.waiting)
     testing.expect(t, os.exists(path(root, "right", "a.jpg")))
 }
+
+// ^C on a running filter ends the whole line at once: nothing after it runs.
+@(test)
+a_stopped_filter_ends_the_line :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+
+    start := time.tick_now()
+    oter.run_line(&a, ":sel | sleep 5 && cat | :copy @+1")
+    testing.expect(t, oter.filter_stop(&a))
+    settle(&a)
+
+    testing.expect(t, time.tick_since(start) < 2 * time.Second)
+    testing.expect(t, !a.chain.waiting)
+    testing.expect_value(t, len(a.sends), 0)
+    testing.expect(t, !os.exists(path(root, "right", "a.jpg")))
+    testing.expect(t, !oter.filter_stop(&a)) // nothing left to stop; ^C goes to the shell
+}

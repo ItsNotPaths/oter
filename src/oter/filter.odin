@@ -20,9 +20,9 @@ Filter :: struct {
     msg:      string,
     ok:       bool,
     finished: bool, // atomic; the fields above are final once set
+    stop:     bool, // atomic; ^C in the drawer sets it
 }
 
-// (hole filter-cancel :tags input :sev gap) no key stops a running filter; the chain waits it out.
 filter_start :: proc(a: ^App, step: cl.Step, cmd: string) {
     feed, _ := cl.piped(&a.chain, step)
     f := new(Filter)
@@ -39,7 +39,7 @@ filter_start :: proc(a: ^App, step: cl.Step, cmd: string) {
 filter_work :: proc(f: ^Filter) {
     defer fsop.wake_hook() // after `finished`: defers run last first
     defer sync.atomic_store(&f.finished, true)
-    out, msg, ok := run_filter(f.cmd, f.feed, f.dir)
+    out, msg, ok := run_filter(f)
     f.out, f.msg, f.ok = strings.clone(out), strings.clone(msg), ok
     free_all(context.temp_allocator)
 }
@@ -54,6 +54,10 @@ filter_poll :: proc(a: ^App) {
     a.chain.waiting = false
     defer filter_destroy(f)
     switch {
+    case sync.atomic_load(&f.stop):
+        status_set(a, fmt.tprintf("stopped: %s", f.cmd))
+        cl.reset(&a.chain) // the whole line, not just this step
+        return
     case !f.ok:
         fail(a, f.msg)
     case f.step.feeds:
@@ -77,28 +81,30 @@ filter_destroy :: proc(f: ^Filter) {
     free(f)
 }
 
+// ^C in the drawer: the running filter if there is one. False leaves the key to the shell.
+filter_stop :: proc(a: ^App) -> bool {
+    if a.filter == nil {
+        return false
+    }
+    sync.atomic_store(&a.filter.stop, true)
+    return true
+}
+
 // The feed goes through a temp file: a pipe would block on a feed bigger than its buffer.
 @(private = "file")
-run_filter :: proc(cmd, feed, dir: string) -> (out, msg: string, ok: bool) {
-    f, err := os.create_temp_file("", "oter-feed-*")
+run_filter :: proc(f: ^Filter) -> (out, msg: string, ok: bool) {
+    feed, err := os.create_temp_file("", "oter-feed-*")
     if err != nil {
         return "", os.error_string(err), false
     }
-    path := strings.clone(os.name(f), context.temp_allocator) // close frees the name
+    path := strings.clone(os.name(feed), context.temp_allocator) // close frees the name
     defer os.remove(path)
-    defer os.close(f)
-    os.write_string(f, feed)
-    os.seek(f, 0, .Start)
-    state, stdout, stderr, perr := os.process_exec(
-        {command = {"sh", "-c", cmd}, working_dir = dir, stdin = f},
-        context.temp_allocator,
-    )
-    if perr != nil {
-        return "", os.error_string(perr), false
+    defer os.close(feed)
+    os.write_string(feed, f.feed)
+    os.seek(feed, 0, .Start)
+    out, msg, ok = fsop.exec(f.cmd, {dir = f.dir, stdin = feed, stop = &f.stop})
+    if !ok {
+        msg = fmt.tprintf("%s: %s", f.cmd, msg != "" ? msg : "failed")
     }
-    if !state.success {
-        why := strings.trim_space(string(stderr))
-        return "", fmt.tprintf("%s: %s", cmd, why != "" ? why : fmt.tprintf("exit %d", state.exit_code)), false
-    }
-    return string(stdout), "", true
+    return
 }

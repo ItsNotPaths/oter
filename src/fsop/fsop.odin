@@ -137,59 +137,88 @@ run_line :: proc(line: string, vars: cl.Vars, pct: ^int) -> (msg: string, ok: bo
     if !filled {
         return fmt.tprintf("no $o_%s", missing), false
     }
+    _, msg, ok = exec(cmd, {pct = pct})
+    return
+}
+
+// How `exec` runs a command. Every field is optional.
+Exec :: struct {
+    dir:   string,
+    stdin: ^os.File,
+    pct:   ^int,  // atomic; stdout is read for `NN%` instead of kept
+    stop:  ^bool, // atomic; once set, the command is killed
+}
+
+// `sh -c cmd`, its output read as it comes, so a long one can report progress or be stopped.
+// Temp-allocated. A stopped command is not ok; its stderr is "stopped".
+exec :: proc(cmd: string, e: Exec) -> (stdout, stderr: string, ok: bool) {
     out_r, out_w, perr := os.pipe()
     if perr != nil {
-        return os.error_string(perr), false
+        return "", os.error_string(perr), false
     }
     defer os.close(out_r)
     err_r, err_w, eerr := os.pipe()
     if eerr != nil {
         os.close(out_w)
-        return os.error_string(eerr), false
+        return "", os.error_string(eerr), false
     }
     defer os.close(err_r)
-    proc_, serr := os.process_start({command = {"sh", "-c", cmd}, stdout = out_w, stderr = err_w})
+    proc_, serr := os.process_start({command = {"sh", "-c", cmd}, working_dir = e.dir, stdin = e.stdin, stdout = out_w, stderr = err_w})
     os.close(out_w)
     os.close(err_w)
     if serr != nil {
-        return os.error_string(serr), false
+        return "", os.error_string(serr), false
     }
 
-    stderr := make([dynamic]u8, context.temp_allocator)
-    seg: [dynamic]u8 // stdout since the last \r or \n
-    seg.allocator = context.temp_allocator
+    out := make([dynamic]u8, context.temp_allocator)
+    errs := make([dynamic]u8, context.temp_allocator)
+    seg := make([dynamic]u8, context.temp_allocator) // stdout since the last \r or \n
     buf: [4096]u8
     out_open, err_open := true, true
     for out_open || err_open {
+        if e.stop != nil && sync.atomic_load(e.stop) {
+            _ = os.process_kill(proc_) // a child it left gets SIGPIPE on its next write
+            _, _ = os.process_wait(proc_)
+            return "", "stopped", false
+        }
         got := false
         if out_open {
-            n, e := drain(out_r, buf[:])
-            out_open = e == nil
+            n, rerr := drain(out_r, buf[:])
+            out_open = rerr == nil
             got |= n > 0
-            for c in buf[:n] {
-                if c != '\r' && c != '\n' {
-                    append(&seg, c)
-                    continue
-                }
-                if v, has := progress_pct(string(seg[:])); has {
-                    sync.atomic_store(pct, v)
-                    wake_hook()
-                }
-                clear(&seg)
+            if e.pct == nil {
+                append(&out, ..buf[:n])
+            } else {
+                progress_feed(&seg, buf[:n], e.pct)
             }
         }
         if err_open {
-            n, e := drain(err_r, buf[:])
-            err_open = e == nil
+            n, rerr := drain(err_r, buf[:])
+            err_open = rerr == nil
             got |= n > 0
-            append(&stderr, ..buf[:n])
+            append(&errs, ..buf[:n])
         }
         if !got {
             time.sleep(10 * time.Millisecond)
         }
     }
     state, _ := os.process_wait(proc_)
-    return strings.trim_space(string(stderr[:])), state.exit_code == 0
+    return string(out[:]), strings.trim_space(string(errs[:])), state.exit_code == 0
+}
+
+@(private = "file")
+progress_feed :: proc(seg: ^[dynamic]u8, bytes: []u8, pct: ^int) {
+    for c in bytes {
+        if c != '\r' && c != '\n' {
+            append(seg, c)
+            continue
+        }
+        if v, has := progress_pct(string(seg[:])); has {
+            sync.atomic_store(pct, v)
+            wake_hook()
+        }
+        clear(seg)
+    }
 }
 
 // What is in the pipe now, without blocking. An error is the writer gone and the pipe empty.
