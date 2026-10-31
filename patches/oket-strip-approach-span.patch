@@ -1,0 +1,16 @@
+diff --git a/src/strip/strip.odin b/src/strip/strip.odin
+index 0adae43..17ba205 100644
+--- a/src/strip/strip.odin
++++ b/src/strip/strip.odin
+@@ -42,6 +42,11 @@ approach :: proc(x, dest, dt, tau: f32) -> f32 {
+     return abs(dest - at) < SNAP ? dest : at
+ }
+ 
++// Both ends of a slot, one step each: a panel that opens, closes or swaps slides into place.
++approach_span :: proc(now, dest: Span, dt, tau: f32) -> Span {
++    return {approach(now.x, dest.x, dt, tau), approach(now.w, dest.w, dt, tau)}
++}
++
+ // Where panel `i` of `n` rests: `run` pixels from `along`, less half the gap on each side it
+ // shares with a neighbour, so the strip's two ends stay flush (PANELS.md §5).
+ slot :: proc(along, run, gap: f32, i, n: int) -> Span {

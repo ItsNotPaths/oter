@@ -156,3 +156,32 @@ deleting_the_selection_removes_the_marked_files :: proc(t: ^testing.T) {
     testing.expect_value(t, len(p.entries), 1)
     testing.expect_value(t, len(p.marks), 0)
 }
+
+@(test)
+np_opens_a_pane_right_of_the_focused_one_at_its_dir :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+
+    oter.run_line(&a, ":np")
+    testing.expect_value(t, len(a.panes), 3)
+    testing.expect_value(t, a.active, 1)
+    testing.expect_value(t, a.panes[1].dir, a.panes[0].dir)
+    testing.expect_value(t, a.panes[2].dir, path(root, "right"))
+}
+
+@(test)
+close_drops_the_focused_pane_but_never_the_last :: proc(t: ^testing.T) {
+    a: oter.App
+    root := two_panes(t, &a)
+    defer teardown(&a, root)
+
+    a.active = 1
+    oter.run_line(&a, ":close")
+    testing.expect_value(t, len(a.panes), 1)
+    testing.expect_value(t, a.active, 0)
+    testing.expect_value(t, a.panes[0].dir, path(root, "left"))
+
+    oter.run_line(&a, ":close")
+    testing.expect_value(t, len(a.panes), 1)
+}

@@ -161,6 +161,20 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
     case "unmark":
         _, dir := cl.first_arg(args)
         pane.unmark(p, dir)
+    case "np":
+        np: pane.Pane
+        pane.open(&np, p.dir)
+        a.active += 1
+        inject_at(&a.panes, a.active, np)
+        frame_pane_insert(&a.frame, a.active)
+    case "close":
+        if len(a.panes) < 2 {
+            return fail(a, ":close: one pane left")
+        }
+        pane.destroy(p)
+        ordered_remove(&a.panes, a.active)
+        frame_pane_remove(&a.frame, a.active)
+        a.active = min(a.active, len(a.panes) - 1)
     case "focus", "swap":
         i, ok := pane_target(a, args)
         if !ok {
@@ -168,6 +182,7 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         }
         if name == "swap" {
             a.panes[a.active], a.panes[i] = a.panes[i], a.panes[a.active]
+            frame_pane_swap(&a.frame, a.active, i)
         }
         a.active = i
     case:

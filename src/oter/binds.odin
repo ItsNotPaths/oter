@@ -18,6 +18,8 @@ alt+;       = :stage :
 alt+c       = :stage
 alt+up      = :drawer open
 alt+down    = :drawer close
+alt+p       = :np
+alt+q       = :close
 tab         = :sidebar
 
 [panes]

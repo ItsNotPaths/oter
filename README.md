@@ -35,8 +35,8 @@ writes defaults.
 
 ## Getting around
 
-Panes sit side by side. `alt+left` / `alt+right` changes focus. `tab` goes to the places
-sidebar, and `esc` comes back.
+Panes sit side by side. `alt+left` / `alt+right` changes focus, `alt+p` opens a pane at this
+one's dir and `alt+q` closes one. `tab` goes to the places sidebar, and `esc` comes back.
 
 `space` yanks the item under the cursor; hold it and press `up` / `down` to yank a run. Yanks
 stay when you change folder, so you can gather them from several, and the pane's header counts
