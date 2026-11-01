@@ -107,6 +107,8 @@ config_load :: proc(a: ^App) {
     scopes: map[string]theme.Entry
     defer theme.forget(&scopes) // oter draws no syntax
     problem: string
+    // (hole theme-switch :tags theme :sev gap) the theme loads once at start; no `:set theme.name` as in oket.
+    // (hole theme-pick :tags theme :needs theme-switch :sev gap) no way to list or try themes; only a name typed in config.conf.
     a.theme, problem = theme.load(&scopes, a.home.config, a.config.theme)
     if problem != "" {
         status_set(a, problem, true)
