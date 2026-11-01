@@ -110,13 +110,15 @@ conf_rows :: proc(text, file: string, sections: []string, bad: ^[dynamic]string)
 
 // The first bad row in the status line, with a count of the rest. Frees `bad`.
 report_bad :: proc(a: ^App, bad: [dynamic]string) {
-    defer {
-        for m in bad {
-            delete(m)
-        }
-        delete(bad)
-    }
+    defer bad_free(bad)
     if len(bad) > 0 {
         status_set(a, len(bad) == 1 ? bad[0] : fmt.tprintf("%s (and %d more)", bad[0], len(bad) - 1), true)
     }
+}
+
+bad_free :: proc(bad: [dynamic]string) {
+    for m in bad {
+        delete(m)
+    }
+    delete(bad)
 }

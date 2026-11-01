@@ -107,6 +107,7 @@ term0_pump :: proc(a: ^App) {
     } else if !t.on_altscreen && a.drawer == .Full {
         a.drawer = a.drawer_before
         mode_set(a, a.drawer == .Open ? .Term : .Panes)
+        theme_reload(a) // the TUI may have been `oter --theme`
     }
 
     // Sized as the tray shows it even while shut, so output wraps where you will read it.

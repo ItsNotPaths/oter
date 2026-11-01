@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 import "oket:gfx"
+import "oket:pty"
 import "oket:theme"
 
 @(rodata)
@@ -93,24 +94,45 @@ lines_clear :: proc(list: ^[dynamic]string) {
 
 // Defaults, then config.conf over them, then its theme.
 config_load :: proc(a: ^App) {
-    bad := config_parse(&a.config, DEFAULT_CONFIG, "defaults")
-    assert(len(bad) == 0, "a default config row does not parse")
-    delete(bad)
-    if text, path, found := conf_read(a, "config.conf", DEFAULT_CONFIG); found {
-        report_bad(a, config_parse(&a.config, text, path))
-    }
+    report_bad(a, config_read(a, &a.config))
+    theme_apply(a)
+}
 
-    a.theme = gfx.DEFAULT_THEME
-    if a.home.config == "" {
-        return // "themes/" relative is somebody's cwd
+// config.conf's theme again, applied if `oter --theme` moved it.
+theme_reload :: proc(a: ^App) {
+    cfg: Config
+    defer config_destroy(&cfg)
+    bad_free(config_read(a, &cfg)) // reported once, at start
+    if cfg.theme != a.config.theme {
+        a.config.theme, cfg.theme = cfg.theme, a.config.theme
+        theme_apply(a)
     }
-    scopes: map[string]theme.Entry
-    defer theme.forget(&scopes) // oter draws no syntax
-    problem: string
-    // (hole theme-switch :tags theme :sev gap) the theme loads once at start; no `:set theme.name` as in oket.
-    // (hole theme-pick :tags theme :needs theme-switch :sev gap) no way to list or try themes; only a name typed in config.conf.
-    a.theme, problem = theme.load(&scopes, a.home.config, a.config.theme)
-    if problem != "" {
-        status_set(a, problem, true)
+}
+
+@(private = "file")
+config_read :: proc(a: ^App, cfg: ^Config) -> (bad: [dynamic]string) {
+    bad = config_parse(cfg, DEFAULT_CONFIG, "defaults")
+    assert(len(bad) == 0, "a default config row does not parse")
+    if text, path, found := conf_read(a, "config.conf", DEFAULT_CONFIG); found {
+        delete(bad)
+        bad = config_parse(cfg, text, path)
+    }
+    return
+}
+
+@(private = "file")
+theme_apply :: proc(a: ^App) {
+    a.theme = gfx.DEFAULT_THEME
+    if a.home.config != "" { // "themes/" relative is somebody's cwd
+        scopes: map[string]theme.Entry
+        defer theme.forget(&scopes) // oter draws no syntax
+        problem: string
+        a.theme, problem = theme.load(&scopes, a.home.config, a.config.theme)
+        if problem != "" {
+            status_set(a, problem, true)
+        }
+    }
+    if pty.terminal_alive(&a.term0) {
+        pty.terminal_set_default_colors(&a.term0, a.theme[.Fg], a.theme[.Bg])
     }
 }
