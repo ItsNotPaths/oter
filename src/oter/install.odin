@@ -6,7 +6,7 @@ import "core:path/filepath"
 import "core:strings"
 import "oket:cl"
 
-USAGE_OTER :: ":oter status | install | uninstall | update"
+USAGE_OTER :: ":oter status | install | uninstall | update | theme"
 UPDATE_LINE :: "curl -fsSL https://github.com/ItsNotPaths/oter/releases/latest/download/install.sh | sh"
 
 // A template: its `oter` command word becomes the installed binary's full path.
@@ -140,24 +140,29 @@ install_status :: proc(h: Home, t: Install_Target) -> string {
     return strings.to_string(b)
 }
 
-// `--status`, `--install`, `--uninstall`: before the window, so they work with no display.
+// `--status`, `--install`, `--uninstall`, `--update`: before the window, so they work with no display.
 install_cli :: proc(args: []string) -> (handled, ok: bool) {
     for arg in args {
-        if arg != "--status" && arg != "--install" && arg != "--uninstall" {
+        if arg != "--status" && arg != "--install" && arg != "--uninstall" && arg != "--update" {
             continue
         }
         t := install_target()
         defer install_target_destroy(&t)
+        h := home_resolve()
+        defer home_destroy(&h)
         msg: string
         switch arg {
         case "--status":
-            h := home_resolve()
-            defer home_destroy(&h)
             ok, msg = true, install_status(h, t)
         case "--install":
             ok, msg = install_run(t, exe_path())
         case "--uninstall":
             ok, msg = install_remove(t)
+        case "--update":
+            if !h.portable {
+                return true, update_run()
+            }
+            msg = "update: this copy is portable; oter --install first"
         }
         fmt.println(msg)
         return true, ok
@@ -165,17 +170,23 @@ install_cli :: proc(args: []string) -> (handled, ok: bool) {
     return
 }
 
-// `:oter <verb>` as the line term0 runs: this binary's own flag, or install.sh for update.
+// install.sh on this terminal, so its output is the answer.
+@(private = "file")
+update_run :: proc() -> bool {
+    p, err := os.process_start({command = {"sh", "-c", UPDATE_LINE}, stdin = os.stdin, stdout = os.stdout, stderr = os.stderr})
+    if err != nil {
+        fmt.eprintfln("update: %v", err)
+        return false
+    }
+    state, _ := os.process_wait(p)
+    return state.success
+}
+
+// `:oter <verb>` as the line term0 runs: this binary's own flag.
 oter_line :: proc(a: ^App, verb: string) -> (line: string, ok: bool) {
     switch verb {
-    case "", "status", "install", "uninstall":
+    case "", "status", "install", "uninstall", "update", "theme":
         return fmt.tprintf("%s --%s", cl.sh_quote(exe_path(), context.temp_allocator), verb == "" ? "status" : verb), true
-    case "update":
-        if a.home.portable {
-            status_set(a, "update: this copy is portable; :oter install first", true)
-            return
-        }
-        return UPDATE_LINE, true
     }
     status_set(a, USAGE_OTER, true)
     return
