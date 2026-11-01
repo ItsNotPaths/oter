@@ -92,7 +92,7 @@ echo "==> stb (font rasterizing, picture decoding; static libs)"
 STB_SRC="${ODIN_ROOT%/}/vendor/stb/src"
 STB_ODIN_LIB="${ODIN_ROOT%/}/vendor/stb/lib"
 STB_OUT="$VENDOR/stb"
-for name in stb_truetype stb_rect_pack stb_image; do
+for name in stb_truetype stb_rect_pack stb_image stb_image_write stb_image_resize; do # the image package links all three
     if [ -f "$STB_ODIN_LIB/$name.a" ]; then
         echo "  already present: $name.a"
         continue
