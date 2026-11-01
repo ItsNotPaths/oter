@@ -23,6 +23,7 @@ Region :: struct {
     clip: gfx.Rect, // the part on screen; a pane scrolled off the strip is cut
     now:  strip.Span, // a pane's slot as drawn; slides to where it rests
     grid: gfx.Grid,
+    pic:  gfx.Image_Quad, // drawn over the grid; no handle draws nothing
 }
 
 Frame :: struct {

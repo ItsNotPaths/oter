@@ -125,6 +125,8 @@ run_builtin :: proc(a: ^App, step: cl.Step) -> bool {
         if a.mode == .Panes {
             cl_open(a, args)
         }
+    case "preview":
+        a.preview = !a.preview
     case "sidebar":
         #partial switch a.mode {
         case .Panes:

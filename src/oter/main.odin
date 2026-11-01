@@ -28,6 +28,7 @@ Mode :: enum {
 App :: struct {
     window:  ^sdl.Window,
     painter: gfx.Painter,
+    blitter: gfx.Blitter,
     font_px:     int, // baked now
     font_system: int, // what the display asked for; :font.reset goes back to it
     frame:   Frame,
@@ -61,6 +62,8 @@ App :: struct {
     },
     paint:     Maybe(bool), // while the key that ran `:mark` is held, up/down set this mark
     paint_key: input.Code,
+    preview:  bool, // `:preview` flips it
+    pictures: [dynamic]^Picture, // the focused cursor's, plus any still decoding
     pick_out: string, // the file dialog's answer file; "" when not one
     running: bool,
 }
@@ -144,6 +147,11 @@ main :: proc() {
         os.exit(1)
     }
     defer gfx.painter_destroy(&a.painter)
+    if !gfx.blitter_init(&a.blitter) {
+        os.exit(1)
+    }
+    defer gfx.blitter_destroy(&a.blitter)
+    defer preview_destroy(&a)
     font_init(&a, font_px)
     gfx.painter_set_scale(&a.painter, len(faces) > 0 ? 1 : sx)
     defer frame_destroy(&a.frame)
@@ -182,7 +190,7 @@ main :: proc() {
     term0_start(&a)
     defer pty.terminal_close(&a.term0)
 
-    // Redraw only when something happened, or while something slides.
+    // Redraw only when something happened, while something slides, or when a GIF's frame is due.
     last := time.tick_now()
     for a.running {
         jobs_poll(&a)
@@ -194,10 +202,12 @@ main :: proc() {
 
         ev: sdl.Event
         if !moving { // while something slides the swap paces the frames, as in oket
-            if !sdl.WaitEvent(&ev) {
+            ms := preview_wait_ms(&a)
+            got := ms < 0 ? sdl.WaitEvent(&ev) : sdl.WaitEventTimeout(&ev, i32(ms))
+            last = time.tick_now() // the wait is not motion time
+            if !got {
                 continue
             }
-            last = time.tick_now() // the wait is not motion time
             handle(&a, ev)
         }
         for sdl.PollEvent(&ev) {

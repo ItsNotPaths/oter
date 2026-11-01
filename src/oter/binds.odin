@@ -46,6 +46,7 @@ del         = :stage :sel | xargs -d '\n' rm -rf --
 alt+r       = :stage mv -- $o_name
 alt+n       = :stage mkdir --
 e           = ${EDITOR:-vi} $o_src
+w           = :preview
 alt+left    = :focus @-1
 alt+right   = :focus @+1
 alt+shift+left  = :swap @-1

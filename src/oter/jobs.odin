@@ -25,6 +25,7 @@ send_start :: proc(a: ^App, srcs: []string, src_dir, dst_dir: string, move: bool
 jobs_poll :: proc(a: ^App) {
     filter_poll(a)
     archives_poll(a)
+    preview_poll(a)
     #reverse for &s, i in a.sends {
         j := s.job
         finished := fsop.is_finished(j) // read first: once set, every field is final

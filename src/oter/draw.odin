@@ -35,6 +35,7 @@ draw :: proc(a: ^App) {
     region_paint(a, &f.sidebar)
     for &r in f.panes {
         region_paint(a, &r)
+        gfx.blitter_draw(&a.blitter, {r.pic}, r.clip, w, h)
     }
     region_paint(a, &f.drawer)
     region_paint(a, &f.cl)
@@ -96,48 +97,64 @@ draw_pane :: proc(a: ^App, p: ^pane.Pane, r: ^Region, active: bool) {
     header(g, cols, title, active, th, marks_note(p))
 
     rows -= 1
+    r.pic = {}
     if p.err != nil {
         write_clipped(g, 0, 1, cols, fmt.tprint(p.err), th[.Alert], bg, {})
         return
     }
-    pane.scroll(p, rows)
-    for row in 0 ..< rows {
+    // The picture opens under the cursor row, or above it in the bottom half; rows from `gap` shift down `k`.
+    k, gap := 0, rows
+    pic := picture_shown(a, p)
+    _, ch := gfx.painter_cell(&a.painter)
+    if pic != nil {
+        k = picture_rows(rows, r.rect.w, pic.w, pic.h, ch)
+    }
+    list := rows - k
+    pane.scroll(p, list)
+    if k > 0 {
+        at := p.cursor - p.top
+        gap = at >= list / 2 ? at : at + 1
+        r.pic = picture_quad(pic, {r.rect.x, r.rect.y + f32((1 + gap) * ch), r.rect.w, f32(k * ch)})
+    }
+    for row in 0 ..< list {
         i := p.top + row
         if i >= len(p.entries) {
             break
         }
+        y := row + 1 + (row >= gap ? k : 0)
         e := p.entries[i]
         fg := e.is_dir ? th[.Accent] : th[.Fg]
         name := e.is_dir ? fmt.tprintf("%s/", e.name) : e.name
         row_bg := bg
         if i == p.cursor {
             row_bg = gfx.opaque(active ? th[.Dim] : gfx.shade(th[.Dim], 50))
-            row_fill(g, row + 1, fg, row_bg)
+            row_fill(g, y, fg, row_bg)
         }
         if pane.is_marked(p, e) {
-            gfx.grid_put(g, 0, row + 1, gfx.Cell{'▎', th[.Accent], row_bg, {}, 0})
+            gfx.grid_put(g, 0, y, gfx.Cell{'▎', th[.Accent], row_bg, {}, 0})
         }
-        write_clipped(g, 1, row + 1, cols - 1, name, fg, row_bg, {}) // col 0 is the mark gutter
+        write_clipped(g, 1, y, cols - 1, name, fg, row_bg, {}) // col 0 is the mark gutter
     }
     // Items still in flight to this dir, greyed under the list.
     row := len(p.entries) - p.top
     bar := gfx.opaque(gfx.shade(th[.Dim], 50))
     for gh in ghosts(a, p.dir) {
-        if row >= rows {
+        if row >= list {
             break
         }
         if row >= 0 {
+            y := row + 1 + (row >= gap ? k : 0)
             filled := 1 + (cols - 1) * gh.pct / 100 // the row fills by bytes as it lands
             col := 1
             for r in gh.name {
                 if col >= cols {
                     break
                 }
-                gfx.grid_put(g, col, row + 1, gfx.Cell{r, th[.Dim], col < filled ? bar : bg, {}, 0})
+                gfx.grid_put(g, col, y, gfx.Cell{r, th[.Dim], col < filled ? bar : bg, {}, 0})
                 col += 1
             }
             for ; col < filled; col += 1 {
-                gfx.grid_put(g, col, row + 1, gfx.Cell{' ', th[.Dim], bar, {}, 0})
+                gfx.grid_put(g, col, y, gfx.Cell{' ', th[.Dim], bar, {}, 0})
             }
         }
         row += 1
