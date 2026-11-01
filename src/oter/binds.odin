@@ -27,6 +27,7 @@ ctrl+-      = :font.smaller
 ctrl+0      = :font.reset
 tab         = :sidebar
 alt+enter   = :stage :confirm
+alt+t       = oter --theme
 
 [panes]
 up          = :up

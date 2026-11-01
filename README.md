@@ -19,6 +19,7 @@ Or unpack the tarball and run it. Nothing is touched until you `:oter install`.
 | `:oter install` | put the files where they go, then restart |
 | `:oter uninstall` | take it all back out, config and places with it |
 | `:oter update` | fetch the latest release and install it; then restart |
+| `oter --theme` | (`alt+t`) pick a helix theme in term0: type to search, enter pulls and switches, del removes a pulled one |
 
 The same three run with no window as `oter --status`, `--install` and `--uninstall`.
 

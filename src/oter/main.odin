@@ -2,6 +2,7 @@ package oter
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:time"
 import sdl "vendor:sdl3"
 import "oket:cl"
@@ -89,6 +90,9 @@ window_size :: proc(share: f32) -> (w, h: i32) {
 }
 
 main :: proc() {
+    if slice.contains(os.args[1:], "--theme") {
+        os.exit(themer_run())
+    }
     if handled, ok := install_cli(os.args[1:]); handled {
         os.exit(ok ? 0 : 1)
     }
