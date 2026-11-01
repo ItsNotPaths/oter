@@ -1,0 +1,49 @@
+name: Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Only catches a hang.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache vendor/
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: vendor-linux-${{ hashFiles('download-deps.sh', 'patches/**') }}
+
+      # Headers for SDL's X11/Wayland backends; SDL dlopens them at run time.
+      - name: Install sdl3 build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              libwayland-dev libwayland-bin libxkbcommon-dev libdecor-0-dev xorg-dev
+
+      # Versions match release.Dockerfile. Odin must precede Download deps (`odin root`).
+      - name: Install Odin
+        uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: dev-2026-10
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.1
+
+      - name: Download deps
+        run: ./download-deps.sh
+
+      - name: Test
+        run: ./build.sh test
+
+      # -o:speed folds differently; a debug compile does not prove the release build.
+      - name: Build (release settings)
+        run: ./build.sh release
