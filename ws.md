@@ -232,7 +232,7 @@ _No holes match this query._
 
 No code sites yet for clipboard `text/uri-list` and the clash prompt; each gets a stub when
 its turn comes. Image preview is a toggle, not a held key: `:preview` on `w`. While on, the
-picture under each pane's cursor opens in the list (design.md's rows rule), decoded with
+picture under the focused pane's cursor opens in the list (design.md's rows rule), decoded with
 stb_image on its own thread; a GIF plays and the loop sleeps until its next frame. Files
 inside archives get none yet (`preview-archive`). The places sidebar has
 its stub (`places`, Workstream U); hatchzip has its vendoring (`hatchzip-ffi`).
