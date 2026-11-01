@@ -78,7 +78,7 @@ drawer and gives it back when it exits.
 # binds.conf
 [panes]
 y           = :mark
-e           = ${EDITOR:-vi} $o_src
+e           = $OTER_EDITOR $o_src
 shift+right = :sel | :copy @+1
 
 [global]
@@ -97,12 +97,16 @@ with its line number while the rest still loads.
          pick  = 0.6          # the file dialog window, as a share of the screen
 [theme]  name  = gruvbox      # helix TOML from themes/<name>.toml beside this file
 
+[editor]                      # tried in order; the first installed is $OTER_EDITOR
+line = micro
+line = vi
+
 [copy]                        # tried in order; the first whose program is installed runs
 line = rsync -a --ignore-existing --info=progress2 -- $o_src $o_dir/
 line = cp -aT --update=none -- $o_src $o_dst
 ```
 
-A `[copy]` or `[move]` list in the file replaces the default list whole. A name clash skips the
+An `[editor]`, `[copy]` or `[move]` list in the file replaces the default list whole. A name clash skips the
 item; nothing is overwritten.
 
 ## Build

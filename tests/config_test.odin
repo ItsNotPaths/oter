@@ -73,3 +73,17 @@ pick_share_defaults_and_refuses_nonsense :: proc(t: ^testing.T) {
     testing.expect_value(t, len(worse), 1)
     testing.expect_value(t, cfg.pick, 0.4)
 }
+
+// An editor list in the file is the whole list, tried in its order.
+@(test)
+editor_list_replaces_the_default :: proc(t: ^testing.T) {
+    cfg: oter.Config
+    defer oter.config_destroy(&cfg)
+    bad := load(&cfg, "[editor]\nline = micro\nline = hx --vsplit\n")
+    defer free_bad(bad)
+
+    testing.expect_value(t, len(bad), 0)
+    testing.expect_value(t, len(cfg.editor), 2)
+    testing.expect_value(t, cfg.editor[0], "micro")
+    testing.expect_value(t, cfg.editor[1], "hx --vsplit")
+}

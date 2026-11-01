@@ -1,14 +1,16 @@
 package oter
 
 import "core:fmt"
+import "core:os"
 import "core:strconv"
 import "core:strings"
 import "oket:gfx"
 import "oket:pty"
 import "oket:theme"
+import "../fsop"
 
 @(rodata)
-CONFIG_SECTIONS := [?]string{"launch", "theme", "copy", "move"}
+CONFIG_SECTIONS := [?]string{"launch", "theme", "editor", "copy", "move"}
 
 // Every default, in config.conf's own words. The file is written from this on first start.
 DEFAULT_CONFIG :: `[launch]
@@ -19,6 +21,15 @@ pick = 0.6
 # helix TOML from themes/<name>.toml beside this file; gruvbox is built in
 [theme]
 name = gruvbox
+
+# Tried in order; the first whose program is installed is $OTER_EDITOR in binds.
+[editor]
+line = oket
+line = micro
+line = vi
+line = vim
+line = nvim
+line = hx
 
 # Tried in order; the first whose program is installed runs. A list here replaces the default.
 # $o_src is the item, $o_dir the target dir, $o_dst the item's path in it.
@@ -33,14 +44,15 @@ line = mv -T --update=none -- $o_src $o_dst
 Config :: struct {
     panes: int, // open at launch
     pick:  f32, // the pick window's share of the display
-    theme: string, // owned
-    copy:  [dynamic]string, // owned
-    move:  [dynamic]string, // owned
+    theme:  string, // owned
+    editor: [dynamic]string, // owned
+    copy:   [dynamic]string, // owned
+    move:   [dynamic]string, // owned
 }
 
 // Rows from `text` over `cfg`. A list's first row drops what was there. One message per bad row.
 config_parse :: proc(cfg: ^Config, text, file: string) -> (bad: [dynamic]string) {
-    started: [2]bool
+    started: [len(CONFIG_SECTIONS)]bool
     for r in conf_rows(text, file, CONFIG_SECTIONS[:], &bad) {
         switch fmt.tprintf("%s.%s", CONFIG_SECTIONS[r.section], r.key) {
         case "launch.panes":
@@ -60,12 +72,15 @@ config_parse :: proc(cfg: ^Config, text, file: string) -> (bad: [dynamic]string)
         case "theme.name":
             delete(cfg.theme)
             cfg.theme = strings.clone(r.value)
-        case "copy.line", "move.line":
-            move := CONFIG_SECTIONS[r.section] == "move"
-            list := move ? &cfg.move : &cfg.copy
-            if !started[int(move)] {
+        case "editor.line", "copy.line", "move.line":
+            list := &cfg.editor
+            switch CONFIG_SECTIONS[r.section] {
+            case "copy": list = &cfg.copy
+            case "move": list = &cfg.move
+            }
+            if !started[r.section] {
                 lines_clear(list)
-                started[int(move)] = true
+                started[r.section] = true
             }
             append(list, strings.clone(r.value))
         case:
@@ -77,10 +92,10 @@ config_parse :: proc(cfg: ^Config, text, file: string) -> (bad: [dynamic]string)
 
 config_destroy :: proc(cfg: ^Config) {
     delete(cfg.theme)
-    lines_clear(&cfg.copy)
-    lines_clear(&cfg.move)
-    delete(cfg.copy)
-    delete(cfg.move)
+    for list in ([]^[dynamic]string{&cfg.editor, &cfg.copy, &cfg.move}) {
+        lines_clear(list)
+        delete(list^)
+    }
     cfg^ = {}
 }
 
@@ -92,10 +107,22 @@ lines_clear :: proc(list: ^[dynamic]string) {
     clear(list)
 }
 
-// Defaults, then config.conf over them, then its theme.
+// Defaults, then config.conf over them, then its theme and editor.
 config_load :: proc(a: ^App) {
     report_bad(a, config_read(a, &a.config))
     theme_apply(a)
+    editor_export(a)
+}
+
+// Inherited by the drawer shell, so set before it starts.
+@(private = "file")
+editor_export :: proc(a: ^App) {
+    line, found := fsop.pick(a.config.editor[:])
+    if !found {
+        status_set(a, "no editor installed", true)
+        return
+    }
+    _ = os.set_env("OTER_EDITOR", line)
 }
 
 // config.conf's theme again, applied if `oter --theme` moved it.
